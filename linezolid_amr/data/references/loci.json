@@ -1,0 +1,81 @@
+{
+  "version": "1",
+  "description": "Reference accessions and canonical linezolid-resistance positions in 23S rRNA. Positions use Escherichia coli K-12 23S rRNA numbering (the clinical-literature convention). Species-specific positions in the bundled per-organism references are computed by fetch-references via pairwise alignment against the E. coli reference. Coordinates verified from NCBI E-utilities feature tables.",
+
+  "linezolid_positions_ecoli_23s": [
+    { "ecoli_position": 2032, "ref_base": "G", "resistance_bases": ["A"], "drug": "linezolid" },
+    { "ecoli_position": 2447, "ref_base": "G", "resistance_bases": ["T", "U"], "drug": "linezolid" },
+    { "ecoli_position": 2453, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid" },
+    { "ecoli_position": 2500, "ref_base": "T", "resistance_bases": ["A"], "drug": "linezolid" },
+    { "ecoli_position": 2503, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid,tedizolid" },
+    { "ecoli_position": 2504, "ref_base": "T", "resistance_bases": ["A", "C"], "drug": "linezolid" },
+    { "ecoli_position": 2505, "ref_base": "G", "resistance_bases": ["A"], "drug": "linezolid" },
+    { "ecoli_position": 2534, "ref_base": "C", "resistance_bases": ["T"], "drug": "linezolid" },
+    { "ecoli_position": 2572, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid" },
+    { "ecoli_position": 2576, "ref_base": "G", "resistance_bases": ["T", "U", "A", "C"], "drug": "linezolid", "note": "Most prevalent 23S linezolid resistance mutation across genera" },
+    { "ecoli_position": 2603, "ref_base": "G", "resistance_bases": ["T"], "drug": "linezolid" }
+  ],
+
+  "ecoli_reference": {
+    "label": "ecoli_K12_23S_rrlB",
+    "description": "Escherichia coli K-12 MG1655 23S rRNA (rrlB) — coordinate master for E. coli-numbering position mapping",
+    "genome_accession": "NC_000913.3",
+    "start": 4168641,
+    "end": 4171544,
+    "strand": "+",
+    "expected_length_bp": 2904
+  },
+
+  "organisms": {
+    "Staphylococcus_aureus": {
+      "amrfinder_organism": "Staphylococcus_aureus",
+      "description": "Staphylococcus aureus NCTC 8325 23S rRNA (Sa23SA, first of 5 copies)",
+      "genome_accession": "NC_007795.1",
+      "start": 450739,
+      "end": 453661,
+      "strand": "+",
+      "expected_length_bp": 2923,
+      "copy_number_note": "S. aureus typically encodes 5 rrn operons; reads will map to all copies"
+    },
+    "Enterococcus_faecalis": {
+      "amrfinder_organism": "Enterococcus_faecalis",
+      "description": "Enterococcus faecalis V583 23S rRNA (first of 4 copies)",
+      "genome_accession": "NC_004668.1",
+      "start": 250246,
+      "end": 253158,
+      "strand": "+",
+      "expected_length_bp": 2913,
+      "copy_number_note": "E. faecalis typically encodes 4 rrn operons"
+    },
+    "Enterococcus_faecium": {
+      "amrfinder_organism": "Enterococcus_faecium",
+      "description": "Enterococcus faecium DO 23S rRNA (first of 6 copies)",
+      "genome_accession": "NC_017960.1",
+      "start": 465061,
+      "end": 467974,
+      "strand": "+",
+      "expected_length_bp": 2914,
+      "copy_number_note": "E. faecium typically encodes 6 rrn operons"
+    },
+    "Streptococcus_pneumoniae": {
+      "amrfinder_organism": "Streptococcus_pneumoniae",
+      "description": "Streptococcus pneumoniae TIGR4 23S rRNA (first of 4 copies)",
+      "genome_accession": "NC_003028.3",
+      "start": 17142,
+      "end": 20043,
+      "strand": "+",
+      "expected_length_bp": 2902,
+      "copy_number_note": "S. pneumoniae typically encodes 4 rrn operons"
+    },
+    "Mycobacterium_tuberculosis": {
+      "amrfinder_organism": "Mycobacterium_tuberculosis",
+      "description": "Mycobacterium tuberculosis H37Rv rrl (single 23S rRNA copy)",
+      "genome_accession": "NC_000962.3",
+      "start": 1473658,
+      "end": 1476795,
+      "strand": "+",
+      "expected_length_bp": 3138,
+      "copy_number_note": "Single rrl copy — variants are homozygous, not heteroresistant"
+    }
+  }
+}

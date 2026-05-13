@@ -1,0 +1,40 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# tool outputs
+results/
+*.bam
+*.bai
+*.vcf
+*.vcf.gz
+*.fastq
+*.fq
+*.fastq.gz
+*.fq.gz
+
+# example/test data shouldn't be committed
+52600092496H*
+*.fasta
+!linezolid_amr/data/references/**/*.fasta
+
+# bundled references downloaded at build time
+linezolid_amr/data/references/*.fasta
+linezolid_amr/data/references/*.fasta.fai
+linezolid_amr/data/references/*.mmi
+!linezolid_amr/data/references/.gitkeep
