@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>linezolid-amr — User Guide</title>
+<style>
+@page {
+  size: A4;
+  margin: 22mm 18mm 22mm 18mm;
+  @bottom-center {
+    content: "linezolid-amr v0.1.0 — User Guide   ·   page " counter(page) " / " counter(pages);
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 8.5pt;
+    color: #666;
+  }
+}
+@page :first { @bottom-center { content: ""; } margin: 0; }
+
+body {
+  font-family: "Helvetica", "Arial", sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+}
+
+.cover {
+  page: cover;
+  height: 297mm;
+  margin: 0;
+  padding: 60mm 24mm 0 24mm;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #0d3b66 0%, #1f6091 60%, #2a8ac1 100%);
+  color: white;
+}
+.cover h1 { font-size: 42pt; font-weight: 800; margin: 0 0 6mm 0; letter-spacing: -1px; }
+.cover h2 { font-size: 18pt; font-weight: 300; margin: 0 0 14mm 0; opacity: 0.92; }
+.cover .meta { font-size: 11pt; opacity: 0.85; line-height: 1.6; }
+.cover .meta strong { font-weight: 600; }
+.cover .accent {
+  margin-top: 22mm; width: 60mm; height: 4px; background: #ffd166;
+}
+.cover .footer { position: absolute; bottom: 18mm; left: 24mm; right: 24mm; font-size: 9.5pt; opacity: 0.85; }
+
+h1.section {
+  font-size: 20pt; color: #0d3b66; margin: 8mm 0 3mm 0;
+  border-bottom: 2px solid #0d3b66; padding-bottom: 1mm;
+  break-before: page;
+}
+h2 { font-size: 13pt; color: #1f6091; margin: 6mm 0 1.5mm 0; }
+h3 { font-size: 11.5pt; color: #1f6091; margin: 4mm 0 1mm 0; }
+
+p { margin: 1mm 0 2mm 0; text-align: justify; }
+ul, ol { margin: 1mm 0 3mm 5mm; }
+li { margin: 0.5mm 0; }
+
+code, pre, .mono {
+  font-family: "Menlo", "Consolas", "DejaVu Sans Mono", monospace;
+  font-size: 9pt;
+}
+code { background: #f1f3f5; padding: 1px 4px; border-radius: 3px; color: #c0392b; }
+
+pre {
+  background: #f6f8fa;
+  border: 1px solid #d7dde2;
+  border-left: 3px solid #1f6091;
+  padding: 8px 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 8.8pt;
+  line-height: 1.4;
+  margin: 2mm 0 3mm 0;
+}
+pre code { background: transparent; padding: 0; color: inherit; }
+
+table {
+  width: 100%; border-collapse: collapse; font-size: 9.5pt;
+  margin: 2mm 0 4mm 0;
+}
+th, td { padding: 4px 6px; text-align: left; vertical-align: top; }
+th { background: #0d3b66; color: white; font-weight: 600; }
+tr:nth-child(even) td { background: #f6f8fa; }
+td.mono, th.mono { font-family: "Menlo", "Consolas", "DejaVu Sans Mono", monospace; font-size: 8.5pt; }
+
+.callout {
+  background: #fff8e1; border-left: 4px solid #f0a500;
+  padding: 8px 12px; margin: 3mm 0; border-radius: 0 4px 4px 0;
+  font-size: 10pt;
+}
+.callout.note { background: #e3f2fd; border-left-color: #1976d2; }
+.callout.warn { background: #fdecea; border-left-color: #c62828; }
+.callout strong { color: #0d3b66; }
+
+.toc { margin: 6mm 0 8mm 0; }
+.toc li { list-style: none; margin: 1.2mm 0; font-size: 11pt; }
+.toc .num { display: inline-block; width: 7mm; color: #1f6091; font-weight: 600; }
+.toc .dots { color: #aab2bd; }
+
+.kv { display: flex; gap: 6px; font-size: 9.5pt; margin: 0.5mm 0; }
+.kv .k { color: #6c757d; min-width: 28mm; }
+.kv .v { font-family: "Menlo", monospace; font-size: 8.8pt; }
+
+.tree { font-family: "Menlo", "Consolas", monospace; font-size: 8.8pt; line-height: 1.35;
+        background: #f6f8fa; border: 1px solid #d7dde2; padding: 10px 14px;
+        border-radius: 4px; white-space: pre; }
+
+.center { text-align: center; }
+.small { font-size: 9pt; color: #555; }
+.tag { display: inline-block; background: #1f6091; color: white;
+       padding: 1px 8px; border-radius: 10px; font-size: 8.5pt; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<section class="cover">
+  <h1>linezolid-amr</h1>
+  <h2>Integrated AMR profiling and 23S rRNA<br>linezolid-resistance frequency analysis</h2>
+  <div class="accent"></div>
+  <div class="meta" style="margin-top: 30mm;">
+    <strong>User Guide</strong> &nbsp;·&nbsp; version 0.1.0<br>
+    From installation to output interpretation
+  </div>
+  <div class="footer">
+    A single command that combines NCBI AMRFinderPlus (gene &amp; mutation
+    detection) with species-aware 23S rRNA pileup to capture heteroresistant
+    linezolid mutations in <em>S. aureus</em>, <em>Enterococcus</em> spp.,
+    <em>S. pneumoniae</em>, and <em>M. tuberculosis</em>.
+  </div>
+</section>
+
+<!-- ============================== TOC ============================== -->
+<section>
+<h1 class="section" style="break-before: page;">Contents</h1>
+<ol class="toc">
+  <li><span class="num">1.</span>&nbsp;Overview &amp; scientific rationale</li>
+  <li><span class="num">2.</span>&nbsp;Installation</li>
+  <li><span class="num">3.</span>&nbsp;One-time setup</li>
+  <li><span class="num">4.</span>&nbsp;Quick start</li>
+  <li><span class="num">5.</span>&nbsp;Command reference</li>
+  <li><span class="num">6.</span>&nbsp;Output directory structure</li>
+  <li><span class="num">7.</span>&nbsp;Output file formats</li>
+  <li><span class="num">8.</span>&nbsp;Interpreting results (worked example)</li>
+  <li><span class="num">9.</span>&nbsp;Heteroresistance &amp; thresholds</li>
+  <li><span class="num">10.</span>&nbsp;Troubleshooting</li>
+  <li><span class="num">11.</span>&nbsp;Publishing on GitHub &amp; bioconda</li>
+</ol>
+</section>
+
+<!-- =========================== 1 OVERVIEW =========================== -->
+<h1 class="section">1 · Overview &amp; scientific rationale</h1>
+
+<p><strong>linezolid-amr</strong> runs two complementary analyses from a single command and combines them into one report:</p>
+<ol>
+  <li><strong>AMRFinderPlus</strong> (NCBI) on the assembly — detects acquired AMR
+  genes (<code>cfr</code>, <code>optrA</code>, <code>poxtA</code>, …) and known
+  point mutations (ribosomal proteins L3, L4, L22; canonical 23S sites).</li>
+  <li><strong>23S rRNA mutation-frequency profiling</strong> on the raw reads —
+  maps the reads to a species-specific 23S reference and reports allele
+  frequencies at canonical linezolid-resistance positions
+  (G2576T, G2505A, G2447T, C2534T, A2503G, …).</li>
+</ol>
+
+<div class="callout note"><strong>Why the read-level step matters.</strong>
+Most clinically important Gram-positive pathogens carry <em>multiple</em>
+copies of the 23S rRNA operon (4–6 in <em>S. aureus</em> and
+<em>Enterococcus</em> spp.; 4 in <em>S. pneumoniae</em>; <em>M. tuberculosis</em>
+is the exception with a single copy). Linezolid resistance can be
+<em>heteroresistant</em>: a G2576T mutation may be present in only 1–3 of the
+operon copies, putting the population-level allele frequency at 15–60 %. The
+assembly consensus base remains G, so assembly-only tools miss the resistance.
+Reading allele frequencies directly off the raw reads is the only reliable way
+to detect this.</div>
+
+<p>The same <code>--organism</code> flag drives both AMRFinderPlus species mode
+and 23S reference selection. Mutations are always reported in
+<strong>E. coli K-12 23S numbering</strong> — the clinical literature standard —
+via a pairwise-alignment-derived position map that is computed once when
+references are fetched.</p>
+
+<h3>Supported organisms (23S analysis)</h3>
+<table>
+  <tr><th>Organism</th><th>23S copies</th><th>Reference (1st copy)</th><th>Length</th></tr>
+  <tr><td>Staphylococcus aureus</td><td>5</td><td class="mono">NCTC 8325 (NC_007795.1)</td><td>2,923 bp</td></tr>
+  <tr><td>Enterococcus faecalis</td><td>4</td><td class="mono">V583 (NC_004668.1)</td><td>2,913 bp</td></tr>
+  <tr><td>Enterococcus faecium</td><td>6</td><td class="mono">DO (NC_017960.1)</td><td>2,914 bp</td></tr>
+  <tr><td>Streptococcus pneumoniae</td><td>4</td><td class="mono">TIGR4 (NC_003028.3)</td><td>2,902 bp</td></tr>
+  <tr><td>Mycobacterium tuberculosis</td><td>1</td><td class="mono">H37Rv (NC_000962.3)</td><td>3,138 bp</td></tr>
+</table>
+<p class="small">AMRFinderPlus itself supports many more organisms; the 23S
+step is automatically skipped if the organism is outside the supported list.</p>
+
+<h3>Linezolid-resistance positions screened (E. coli numbering)</h3>
+<table>
+  <tr><th>Position</th><th>WT base</th><th>Resistance allele(s)</th><th>Drug class</th></tr>
+  <tr><td>2032</td><td>G</td><td>A</td><td>linezolid</td></tr>
+  <tr><td>2447</td><td>G</td><td>T, U</td><td>linezolid</td></tr>
+  <tr><td>2453</td><td>A</td><td>G</td><td>linezolid</td></tr>
+  <tr><td>2500</td><td>T</td><td>A</td><td>linezolid</td></tr>
+  <tr><td>2503</td><td>A</td><td>G</td><td>linezolid, tedizolid</td></tr>
+  <tr><td>2504</td><td>T</td><td>A, C</td><td>linezolid</td></tr>
+  <tr><td>2505</td><td>G</td><td>A</td><td>linezolid</td></tr>
+  <tr><td>2534</td><td>C</td><td>T</td><td>linezolid</td></tr>
+  <tr><td>2572</td><td>A</td><td>G</td><td>linezolid</td></tr>
+  <tr><td><strong>2576</strong></td><td>G</td><td>T, U, A, C</td><td><strong>linezolid (most prevalent)</strong></td></tr>
+  <tr><td>2603</td><td>G</td><td>T</td><td>linezolid</td></tr>
+</table>
+
+<!-- =========================== 2 INSTALL =========================== -->
+<h1 class="section">2 · Installation</h1>
+
+<h2>Option A · From bioconda <span class="tag">recommended once published</span></h2>
+<pre><code>conda create -n linezolid-amr -c bioconda -c conda-forge linezolid-amr
+conda activate linezolid-amr</code></pre>
+<p>Bioconda installs all binary dependencies automatically:
+<code>ncbi-amrfinderplus</code>, <code>minimap2</code>, <code>samtools</code>,
+<code>bcftools</code>, plus the Python libraries <code>click</code>,
+<code>pysam</code>, <code>biopython</code>, <code>pandas</code>.</p>
+
+<h2>Option B · From source (development)</h2>
+<pre><code>git clone https://github.com/sintetico87/linezolid-amr
+cd linezolid-amr
+conda create -n linezolid-amr -c bioconda -c conda-forge \
+    python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools
+conda activate linezolid-amr
+pip install -e .</code></pre>
+
+<h3>Verify the installation</h3>
+<pre><code>linezolid-amr --version
+# linezolid-amr, version 0.1.0
+
+linezolid-amr list-organisms
+# Enterococcus_faecalis     Enterococcus faecalis V583 23S rRNA (first of 4 copies)
+# Enterococcus_faecium      Enterococcus faecium DO 23S rRNA (first of 6 copies)
+# Mycobacterium_tuberculosis Mycobacterium tuberculosis H37Rv rrl (single 23S rRNA copy)
+# Staphylococcus_aureus     Staphylococcus aureus NCTC 8325 23S rRNA (Sa23SA, first of 5 copies)
+# Streptococcus_pneumoniae  Streptococcus pneumoniae TIGR4 23S rRNA (first of 4 copies)</code></pre>
+
+<!-- =========================== 3 SETUP =========================== -->
+<h1 class="section">3 · One-time setup</h1>
+
+<h2>3.1 · AMRFinderPlus database (~150 MB)</h2>
+<pre><code>amrfinder -u</code></pre>
+<p>This downloads the latest curated AMR gene/mutation database from NCBI into
+the AMRFinderPlus install path. Re-run whenever you want to refresh.</p>
+
+<h2>3.2 · 23S references (~25 KB per species)</h2>
+<pre><code># Fetch references for the species you analyze
+linezolid-amr fetch-references --organism Staphylococcus_aureus
+
+# Or pull all five at once
+linezolid-amr fetch-references
+
+# Optional — speed up NCBI requests with your API key
+export NCBI_API_KEY=&lt;your-key&gt;
+linezolid-amr fetch-references</code></pre>
+
+<p>For each organism, <code>fetch-references</code>:</p>
+<ol>
+  <li>Downloads the exact 23S rRNA slice from NCBI E-utilities (verified genome coordinates).</li>
+  <li>Downloads the E. coli K-12 rrlB 23S as a coordinate master.</li>
+  <li>Performs a global pairwise alignment to build a per-base
+      <em>species-position ↔ E. coli-position</em> map.</li>
+  <li>Writes a BED file with canonical LZD-resistance positions translated into species coordinates.</li>
+</ol>
+
+<p>The cache lives at:</p>
+<pre><code>$XDG_DATA_HOME/linezolid-amr/references/
+# or, by default:
+~/.local/share/linezolid-amr/references/
+
+# Override the location:
+export LINEZOLID_AMR_REFDIR=/path/to/refs</code></pre>
+
+<p>Cache contents per species:</p>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td class="mono">Staphylococcus_aureus_23S.fasta</td><td>mapping reference (FASTA + .fai)</td></tr>
+  <tr><td class="mono">Staphylococcus_aureus_23S_lzd_positions.bed</td><td>canonical LZD sites in species coords</td></tr>
+  <tr><td class="mono">Staphylococcus_aureus_23S_position_map.tsv</td><td>per-base E. coli ↔ species position map</td></tr>
+  <tr><td class="mono">ecoli_K12_23S_rrlB.fasta</td><td>shared coordinate master (downloaded once)</td></tr>
+</table>
+
+<!-- =========================== 4 QUICKSTART =========================== -->
+<h1 class="section">4 · Quick start</h1>
+
+<pre><code>linezolid-amr run \
+    --assembly  sample.fasta \
+    --r1        sample_R1.fastq.gz \
+    --r2        sample_R2.fastq.gz \
+    --organism  Staphylococcus_aureus \
+    --outdir    results/sample \
+    --sample    sample \
+    --threads   8</code></pre>
+
+<p>That's the whole pipeline. On a typical 200 MB paired-end run for
+<em>S. aureus</em>, end-to-end time on 8 threads is ~2 minutes (mostly
+read mapping).</p>
+
+<h3>Useful flags</h3>
+<table>
+  <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td class="mono">--min-af</td><td>0.01</td><td>min alt-allele frequency to report (1 %)</td></tr>
+  <tr><td class="mono">--min-depth</td><td>20</td><td>min reads at a position to make a resistance call</td></tr>
+  <tr><td class="mono">--skip-amrfinder</td><td>—</td><td>skip the AMRFinderPlus step</td></tr>
+  <tr><td class="mono">--skip-rrna23s</td><td>—</td><td>skip the 23S analysis step</td></tr>
+  <tr><td class="mono">--threads</td><td>4</td><td>threads forwarded to amrfinder / minimap2 / samtools / bcftools</td></tr>
+</table>
+
+<!-- =========================== 5 COMMANDS =========================== -->
+<h1 class="section">5 · Command reference</h1>
+
+<table>
+  <tr><th>Subcommand</th><th>Purpose</th></tr>
+  <tr><td class="mono">run</td><td>Full pipeline (AMRFinderPlus + 23S + combined report)</td></tr>
+  <tr><td class="mono">amrfinder</td><td>AMRFinderPlus only — assembly in, TSV out</td></tr>
+  <tr><td class="mono">rrna23s</td><td>23S analysis only — reads in, pileup TSV + VCF out</td></tr>
+  <tr><td class="mono">fetch-references</td><td>Download/build references from NCBI</td></tr>
+  <tr><td class="mono">list-organisms</td><td>List 23S-supported organisms</td></tr>
+</table>
+
+<p>Get full help for any subcommand:</p>
+<pre><code>linezolid-amr run --help
+linezolid-amr rrna23s --help</code></pre>
+
+<!-- =========================== 6 OUTPUT TREE =========================== -->
+<h1 class="section">6 · Output directory structure</h1>
+
+<p>After a successful <code>linezolid-amr run</code> the output directory has this layout:</p>
+
+<div class="tree">results/sample/
+├── amrfinder/
+│   ├── amrfinder.tsv                  # AMRFinderPlus raw TSV (all hits)
+│   └── amrfinder.log
+├── rrna23s/
+│   ├── sample.23S.bam                 # sorted, indexed alignment
+│   ├── sample.23S.bam.bai
+│   ├── sample.23S.vcf.gz              # all variants in 23S (bcftools, ploidy=1)
+│   ├── sample.23S.vcf.gz.csi
+│   ├── sample.23S_lzd_pileup.tsv      # allele counts/freqs at canonical LZD positions
+│   ├── sample.23S.map.log
+│   └── sample.23S.vcf.log
+├── sample.linezolid_amr.json          # full machine-readable report
+└── sample.linezolid_amr.txt           # human-readable summary</div>
+
+<!-- =========================== 7 FORMATS =========================== -->
+<h1 class="section">7 · Output file formats</h1>
+
+<h2>7.1 · <code>amrfinder.tsv</code></h2>
+<p>The standard AMRFinderPlus TSV — one row per hit. Key columns:
+<code>Gene symbol</code>, <code>Sequence name</code>, <code>Class</code>,
+<code>Subclass</code>, <code>% Coverage</code>, <code>% Identity</code>,
+<code>Method</code>, <code>Closest reference accession</code>. Hits relevant to
+linezolid (cfr / optrA / poxtA / 23S / L3 / L4 / L22) are flagged in the
+combined JSON report.</p>
+
+<h2>7.2 · <code>sample.23S_lzd_pileup.tsv</code></h2>
+<table>
+  <tr><th>Column</th><th>Meaning</th></tr>
+  <tr><td class="mono">organism</td><td>organism passed via <code>--organism</code></td></tr>
+  <tr><td class="mono">ref_contig</td><td>reference 23S contig name</td></tr>
+  <tr><td class="mono">species_position</td><td>1-based position in the species 23S reference</td></tr>
+  <tr><td class="mono">ecoli_position</td><td>corresponding E. coli K-12 23S position</td></tr>
+  <tr><td class="mono">ref_base</td><td>wild-type base</td></tr>
+  <tr><td class="mono">depth</td><td>total reads at this position (after BAQ/min-base-quality filter)</td></tr>
+  <tr><td class="mono">counts</td><td>per-base counts (e.g. <code>A=2;G=820</code>)</td></tr>
+  <tr><td class="mono">alt_alleles</td><td>non-ref alleles passing thresholds: <code>base:count:af[*=resistance]</code></td></tr>
+  <tr><td class="mono">is_resistance</td><td><code>True</code> if a known resistance allele was observed above thresholds</td></tr>
+  <tr><td class="mono">drug</td><td>resistance phenotype the position is associated with</td></tr>
+</table>
+
+<h2>7.3 · <code>sample.23S.vcf.gz</code></h2>
+<p>Full bcftools VCF of <em>all</em> variants found within the 23S locus
+(ploidy=1, depth up to 100 000). Use this to discover novel mutations that
+are not in the canonical resistance list. Headers include <code>AD</code> and
+<code>DP</code> tags for allele depth and total depth.</p>
+
+<h2>7.4 · <code>sample.linezolid_amr.json</code></h2>
+<p>The combined machine-readable report. Top-level structure:</p>
+<pre><code>{
+  "tool": "linezolid-amr",
+  "version": "0.1.0",
+  "sample": "...",
+  "organism": "Staphylococcus_aureus",
+  "parameters": { ... },
+  "summary": {
+    "linezolid_resistance_call": false,
+    "n_total_amr_hits": 4,
+    "n_linezolid_amr_hits": 0,
+    "n_23s_positions_evaluated": 11,
+    "n_23s_positions_with_resistance_allele": 0,
+    "linezolid_amr_genes_detected": [],
+    "linezolid_23s_positions": []
+  },
+  "amr_hits": [ ... 1 dict per AMRFinder hit ],
+  "rrna23s_pileup": [ ... 1 dict per canonical position ],
+  "rrna23s_vcf": "results/.../sample.23S.vcf.gz"
+}</code></pre>
+
+<h2>7.5 · <code>sample.linezolid_amr.txt</code></h2>
+<p>Human-readable plain-text summary suitable for emailing or pasting into a lab notebook.</p>
+
+<!-- =========================== 8 WORKED EXAMPLE =========================== -->
+<h1 class="section">8 · Interpreting results — worked example</h1>
+
+<p>Sample <code>52600092496H</code> is an <em>S. aureus</em> isolate with paired
+Illumina reads (~400 MB total) and a de-novo assembly. We run:</p>
+
+<pre><code>linezolid-amr run \
+    --assembly  52600092496H.fasta \
+    --r1        52600092496H_R1.fastq.gz \
+    --r2        52600092496H_R2.fastq.gz \
+    --organism  Staphylococcus_aureus \
+    --outdir    results/52600092496H \
+    --sample    52600092496H \
+    --threads   8</code></pre>
+
+<p>The console output:</p>
+<pre><code>&gt;&gt; Running AMRFinderPlus...
+   4 hits, 0 linezolid-relevant
+&gt;&gt; Running 23S rRNA analysis...
+   11 positions; 0 with resistance allele
+&gt;&gt; Building report...
+
+Report:  results/52600092496H/52600092496H.linezolid_amr.json
+Summary: results/52600092496H/52600092496H.linezolid_amr.txt
+Linezolid resistance call: False</code></pre>
+
+<h3>AMRFinderPlus hits (sample)</h3>
+<table>
+  <tr><th>Gene</th><th>Class</th><th>% Cov</th><th>% ID</th><th>LZD-relevant?</th></tr>
+  <tr><td>tet(38)</td><td>TETRACYCLINE</td><td>100.0</td><td>100.00</td><td>no</td></tr>
+  <tr><td>fosB</td><td>FOSFOMYCIN</td><td>100.0</td><td>100.00</td><td>no</td></tr>
+  <tr><td>blaZ</td><td>BETA-LACTAM</td><td>100.0</td><td>94.31</td><td>no</td></tr>
+  <tr><td>blaI</td><td>BETA-LACTAM</td><td>100.0</td><td>96.83</td><td>no</td></tr>
+</table>
+
+<h3>23S pileup at canonical LZD positions</h3>
+<table>
+  <tr><th>E. coli pos</th><th>WT</th><th>Depth</th><th>Counts</th><th>Resistance?</th></tr>
+  <tr><td>2032</td><td>G</td><td>823</td><td>A=1; G=822</td><td>no</td></tr>
+  <tr><td>2447</td><td>G</td><td>841</td><td>G=841</td><td>no</td></tr>
+  <tr><td>2453</td><td>A</td><td>828</td><td>A=828</td><td>no</td></tr>
+  <tr><td>2500</td><td>T</td><td>764</td><td>T=764</td><td>no</td></tr>
+  <tr><td>2503</td><td>A</td><td>757</td><td>A=756; G=1</td><td>no</td></tr>
+  <tr><td>2504</td><td>T</td><td>756</td><td>T=756</td><td>no</td></tr>
+  <tr><td>2505</td><td>G</td><td>762</td><td>G=762</td><td>no</td></tr>
+  <tr><td>2534</td><td>C</td><td>808</td><td>C=805; G=2; T=1</td><td>no</td></tr>
+  <tr><td>2572</td><td>A</td><td>776</td><td>A=773; G=2; T=1</td><td>no</td></tr>
+  <tr><td><strong>2576</strong></td><td>G</td><td>795</td><td><strong>G=795</strong></td><td><strong>no</strong></td></tr>
+  <tr><td>2603</td><td>G</td><td>793</td><td>G=790; T=3</td><td>no</td></tr>
+</table>
+
+<div class="callout note"><strong>Reading the result.</strong>
+Mapping all reads to a single 23S copy pools coverage from all five operons,
+yielding ~750–840× depth. Every canonical position is &gt;99 % reference base.
+The few alt reads (e.g. <code>T=3</code> at position 2603) sit around 0.4 %,
+below the 1 % AF threshold — consistent with Illumina sequencing noise.
+Combined call: <strong>linezolid-susceptible</strong>.</div>
+
+<h3>What a resistant sample would look like</h3>
+<p>A G2576T heteroresistant isolate where the mutation is fixed in 2/5 operons
+would typically show:</p>
+<pre><code>ecoli_position  ref_base  depth  counts            alt_alleles            is_resistance
+2576            G         800    G=480;T=320       T:320:0.4000*          True</code></pre>
+<p>(The trailing <code>*</code> marks the alt allele as a known resistance base.)</p>
+
+<!-- =========================== 9 HETERORESISTANCE =========================== -->
+<h1 class="section">9 · Heteroresistance &amp; thresholds</h1>
+
+<p>The interpretation of an alt-allele frequency at a 23S position depends on
+the organism's number of rRNA operons:</p>
+<table>
+  <tr><th>Organism</th><th>Operons</th><th>1 mutated copy</th><th>2 mutated</th><th>3 mutated</th></tr>
+  <tr><td>S. aureus</td><td>5</td><td>~20 %</td><td>~40 %</td><td>~60 %</td></tr>
+  <tr><td>E. faecalis</td><td>4</td><td>~25 %</td><td>~50 %</td><td>~75 %</td></tr>
+  <tr><td>E. faecium</td><td>6</td><td>~17 %</td><td>~33 %</td><td>~50 %</td></tr>
+  <tr><td>S. pneumoniae</td><td>4</td><td>~25 %</td><td>~50 %</td><td>~75 %</td></tr>
+  <tr><td>M. tuberculosis</td><td>1</td><td>—</td><td>—</td><td>100 % only</td></tr>
+</table>
+
+<div class="callout"><strong>Thresholds.</strong> The defaults
+(<code>--min-af 0.01</code>, <code>--min-depth 20</code>) are chosen so that:
+(a) Illumina ~0.5 % per-base error stays below the AF floor at typical
+depths; (b) clinically meaningful heteroresistance (≥1 operon out of 4–6) is
+always reported. Lower <code>--min-af</code> only if you have very deep
+sequencing and a careful manual review plan.</div>
+
+<!-- =========================== 10 TROUBLESHOOT =========================== -->
+<h1 class="section">10 · Troubleshooting</h1>
+
+<table>
+  <tr><th>Symptom</th><th>Likely cause &amp; fix</th></tr>
+  <tr><td><code>amrfinder failed (exit 1)</code>: "No valid AMRFinder database is found"</td>
+      <td>Run <code>amrfinder -u</code> once. The DB lives outside the conda env data dir.</td></tr>
+  <tr><td><code>References for 'X' not found in cache</code></td>
+      <td>Run <code>linezolid-amr fetch-references --organism X</code>. Requires internet.</td></tr>
+  <tr><td>NCBI E-utils timeout / 429</td>
+      <td>Set <code>NCBI_API_KEY</code> in the environment. Retry — the fetcher already retries 3×.</td></tr>
+  <tr><td>23S coverage is much lower than expected (&lt;50×)</td>
+      <td>Wrong organism. Verify with a taxonomic profiler (Kraken2, etc.) and re-run.</td></tr>
+  <tr><td>"organism not supported for 23S analysis"</td>
+      <td>Organism outside the 5 supported species. <code>--skip-rrna23s</code> still runs AMRFinderPlus.</td></tr>
+  <tr><td>Pileup TSV is empty</td>
+      <td>BAM did not align reads to the 23S reference — check <code>sample.23S.map.log</code> and read quality.</td></tr>
+</table>
+
+<!-- =========================== 11 PUBLISH =========================== -->
+<h1 class="section">11 · Publishing on GitHub &amp; bioconda</h1>
+
+<h2>GitHub</h2>
+<pre><code>gh repo create sintetico87/linezolid-amr --public --source=. --push
+git tag v0.1.0
+git push --tags</code></pre>
+
+<h2>Bioconda</h2>
+<ol>
+  <li>Fork <code>bioconda/bioconda-recipes</code> on GitHub.</li>
+  <li>Copy <code>conda-recipe/meta.yaml</code> from this repo to
+      <code>recipes/linezolid-amr/meta.yaml</code> in your fork.</li>
+  <li>Replace the <code>source:</code> block with the release tarball:
+<pre><code>source:
+  url: https://github.com/sintetico87/linezolid-amr/archive/refs/tags/v0.1.0.tar.gz
+  sha256: &lt;sha256 of the tarball&gt;</code></pre>
+  </li>
+  <li>Compute the sha256:
+<pre><code>curl -sL https://github.com/sintetico87/linezolid-amr/archive/refs/tags/v0.1.0.tar.gz \
+  | shasum -a 256</code></pre></li>
+  <li>Open a pull request to <code>bioconda/bioconda-recipes</code> targeting
+      the <code>master</code> branch. Bioconda CI builds, tests, and gates the merge.
+      Once merged, the package becomes installable via
+      <code>conda install -c bioconda linezolid-amr</code>.</li>
+</ol>
+
+<div class="callout note"><strong>Pre-flight check.</strong> Build the recipe
+locally before opening the PR — saves a round-trip with the bioconda CI:
+<pre><code>conda install -c conda-forge boa conda-build
+conda-build conda-recipe/</code></pre></div>
+
+</body>
+</html>
