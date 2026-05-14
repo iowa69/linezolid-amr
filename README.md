@@ -132,15 +132,6 @@ conda install -c conda-forge boa conda-build
 conda-build conda-recipe/
 ```
 
-## Submitting to bioconda
-
-Bioconda accepts recipes via PR to `bioconda/bioconda-recipes`:
-
-1. Tag and push a release: `git tag v0.1.0 && git push --tags`.
-2. Fork `bioconda/bioconda-recipes`, add `recipes/linezolid-amr/meta.yaml` (copy from `conda-recipe/`).
-3. Replace the `source:` section with `url:` + `sha256:` pointing at the GitHub tarball.
-4. Open a PR. Bioconda CI builds, tests, and gates merge.
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
