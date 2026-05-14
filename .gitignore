@@ -38,3 +38,7 @@ linezolid_amr/data/references/*.fasta
 linezolid_amr/data/references/*.fasta.fai
 linezolid_amr/data/references/*.mmi
 !linezolid_amr/data/references/.gitkeep
+bioconda-recipes/
+build/
+.pytest_cache/
+*.egg-info/
