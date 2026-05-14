@@ -17,7 +17,6 @@ The same `--organism` flag drives both AMRFinderPlus species mode and 23S refere
 | Enterococcus faecalis          | 4          | V583 (NC_004668.1) — 2,913 bp              |
 | Enterococcus faecium           | 6          | DO (NC_017960.1) — 2,914 bp                |
 | Streptococcus pneumoniae       | 4          | TIGR4 (NC_003028.3) — 2,902 bp             |
-| Mycobacterium tuberculosis     | 1          | H37Rv (NC_000962.3) — 3,138 bp             |
 
 AMRFinderPlus supports many more organisms; the 23S step will simply be skipped for organisms outside this list.
 
