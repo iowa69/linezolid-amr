@@ -33,7 +33,7 @@ conda activate linezolid-amr
 ### From source
 
 ```bash
-git clone https://github.com/sintetico87/linezolid-amr
+git clone https://github.com/iowa69/linezolid-amr
 cd linezolid-amr
 conda env create -n linezolid-amr -c bioconda -c conda-forge \
     python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools

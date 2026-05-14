@@ -1,3 +1,3 @@
 """linezolid-amr: integrated AMR profiling and 23S rRNA linezolid-resistance analysis."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linezolid-amr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Integrated AMR profiling and 23S rRNA linezolid-resistance frequency analysis from assembly + raw reads"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -22,7 +22,6 @@ dependencies = [
     "click>=8.0",
     "pysam>=0.22",
     "biopython>=1.81",
-    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -32,8 +31,8 @@ dev = ["pytest>=7", "pytest-cov"]
 linezolid-amr = "linezolid_amr.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/sintetico87/linezolid-amr"
-Issues = "https://github.com/sintetico87/linezolid-amr/issues"
+Homepage = "https://github.com/iowa69/linezolid-amr"
+Issues = "https://github.com/iowa69/linezolid-amr/issues"
 
 [tool.setuptools.packages.find]
 include = ["linezolid_amr*"]

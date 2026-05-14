@@ -43,7 +43,7 @@ from linezolid_amr.references import (
 )
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-USER_AGENT = "linezolid-amr/0.1 (github.com/sintetico87/linezolid-amr)"
+USER_AGENT = "linezolid-amr/0.1 (github.com/iowa69/linezolid-amr)"
 
 
 def _http_get(url: str, retries: int = 3, backoff: float = 2.0) -> bytes:

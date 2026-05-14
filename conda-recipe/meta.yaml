@@ -1,15 +1,14 @@
 {% set name = "linezolid-amr" %}
-{% set version = "0.1.0" %}
+{% set version = "0.1.1" %}
 
 package:
   name: {{ name|lower }}
   version: {{ version }}
 
 source:
-  # When submitting to bioconda-recipes, switch this to:
-  #   url: https://github.com/<user>/linezolid-amr/archive/refs/tags/v{{ version }}.tar.gz
-  #   sha256: <sha256-of-tarball>
-  path: ..
+  url: https://github.com/iowa69/linezolid-amr/archive/refs/tags/v{{ version }}.tar.gz
+  # sha256 is injected when copying this recipe into bioconda-recipes/
+  sha256: PLACEHOLDER_SHA256
 
 build:
   number: 0
@@ -17,6 +16,8 @@ build:
   script: {{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vv
   entry_points:
     - linezolid-amr = linezolid_amr.cli:main
+  run_exports:
+    - {{ pin_subpackage(name, max_pin="x.x") }}
 
 requirements:
   host:
@@ -28,7 +29,6 @@ requirements:
     - click >=8.0
     - pysam >=0.22
     - biopython >=1.81
-    - pandas >=2.0
     - ncbi-amrfinderplus >=4.0
     - minimap2 >=2.24
     - samtools >=1.18
@@ -47,7 +47,7 @@ test:
     - linezolid-amr list-organisms
 
 about:
-  home: https://github.com/sintetico87/linezolid-amr
+  home: https://github.com/iowa69/linezolid-amr
   license: MIT
   license_family: MIT
   license_file: LICENSE
@@ -61,9 +61,9 @@ about:
     both AMRFinderPlus species mode and 23S reference selection. Mutations are
     reported in E. coli K-12 23S numbering (the clinical-literature convention)
     via a pairwise-alignment-derived position map computed at fetch time.
-  dev_url: https://github.com/sintetico87/linezolid-amr
-  doc_url: https://github.com/sintetico87/linezolid-amr#readme
+  dev_url: https://github.com/iowa69/linezolid-amr
+  doc_url: https://github.com/iowa69/linezolid-amr#readme
 
 extra:
   recipe-maintainers:
-    - sintetico87
+    - iowa69

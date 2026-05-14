@@ -8,7 +8,7 @@
   size: A4;
   margin: 22mm 18mm 22mm 18mm;
   @bottom-center {
-    content: "linezolid-amr v0.1.0 — User Guide   ·   page " counter(page) " / " counter(pages);
+    content: "linezolid-amr v0.1.1 — User Guide   ·   page " counter(page) " / " counter(pages);
     font-family: "Helvetica", "Arial", sans-serif;
     font-size: 8.5pt;
     color: #666;
@@ -118,7 +118,7 @@ td.mono, th.mono { font-family: "Menlo", "Consolas", "DejaVu Sans Mono", monospa
   <h2>Integrated AMR profiling and 23S rRNA<br>linezolid-resistance frequency analysis</h2>
   <div class="accent"></div>
   <div class="meta" style="margin-top: 30mm;">
-    <strong>User Guide</strong> &nbsp;·&nbsp; version 0.1.0<br>
+    <strong>User Guide</strong> &nbsp;·&nbsp; version 0.1.1<br>
     From installation to output interpretation
   </div>
   <div class="footer">
@@ -218,7 +218,7 @@ conda activate linezolid-amr</code></pre>
 <code>pysam</code>, <code>biopython</code>, <code>pandas</code>.</p>
 
 <h2>Option B · From source (development)</h2>
-<pre><code>git clone https://github.com/sintetico87/linezolid-amr
+<pre><code>git clone https://github.com/iowa69/linezolid-amr
 cd linezolid-amr
 conda create -n linezolid-amr -c bioconda -c conda-forge \
     python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools
@@ -227,7 +227,7 @@ pip install -e .</code></pre>
 
 <h3>Verify the installation</h3>
 <pre><code>linezolid-amr --version
-# linezolid-amr, version 0.1.0
+# linezolid-amr, version 0.1.1
 
 linezolid-amr list-organisms
 # Enterococcus_faecalis     Enterococcus faecalis V583 23S rRNA (first of 4 copies)
@@ -509,8 +509,8 @@ sequencing and a careful manual review plan.</div>
 <h1 class="section">11 · Publishing on GitHub &amp; bioconda</h1>
 
 <h2>GitHub</h2>
-<pre><code>gh repo create sintetico87/linezolid-amr --public --source=. --push
-git tag v0.1.0
+<pre><code>gh repo create iowa69/linezolid-amr --public --source=. --push
+git tag v0.1.1
 git push --tags</code></pre>
 
 <h2>Bioconda</h2>
@@ -520,11 +520,11 @@ git push --tags</code></pre>
       <code>recipes/linezolid-amr/meta.yaml</code> in your fork.</li>
   <li>Replace the <code>source:</code> block with the release tarball:
 <pre><code>source:
-  url: https://github.com/sintetico87/linezolid-amr/archive/refs/tags/v0.1.0.tar.gz
+  url: https://github.com/iowa69/linezolid-amr/archive/refs/tags/v0.1.1.tar.gz
   sha256: &lt;sha256 of the tarball&gt;</code></pre>
   </li>
   <li>Compute the sha256:
-<pre><code>curl -sL https://github.com/sintetico87/linezolid-amr/archive/refs/tags/v0.1.0.tar.gz \
+<pre><code>curl -sL https://github.com/iowa69/linezolid-amr/archive/refs/tags/v0.1.1.tar.gz \
   | shasum -a 256</code></pre></li>
   <li>Open a pull request to <code>bioconda/bioconda-recipes</code> targeting
       the <code>master</code> branch. Bioconda CI builds, tests, and gates the merge.
