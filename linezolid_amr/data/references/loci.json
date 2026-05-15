@@ -1,19 +1,30 @@
 {
-  "version": "1",
-  "description": "Reference accessions and canonical linezolid-resistance positions in 23S rRNA. Positions use Escherichia coli K-12 23S rRNA numbering (the clinical-literature convention). Species-specific positions in the bundled per-organism references are computed by fetch-references via pairwise alignment against the E. coli reference. Coordinates verified from NCBI E-utilities feature tables.",
+  "version": "2",
+  "description": "Reference accessions, canonical linezolid-resistance 23S rRNA positions, and acquired oxazolidinone resistance genes. Positions use E. coli K-12 23S rRNA numbering (clinical-literature convention). Each position carries a verified PMID. Per-species position maps are computed by fetch-references via global pairwise alignment to E. coli 23S. Coordinates verified from NCBI E-utilities feature tables.",
 
   "linezolid_positions_ecoli_23s": [
-    { "ecoli_position": 2032, "ref_base": "G", "resistance_bases": ["A"], "drug": "linezolid" },
-    { "ecoli_position": 2447, "ref_base": "G", "resistance_bases": ["T", "U"], "drug": "linezolid" },
-    { "ecoli_position": 2453, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid" },
-    { "ecoli_position": 2500, "ref_base": "T", "resistance_bases": ["A"], "drug": "linezolid" },
-    { "ecoli_position": 2503, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid,tedizolid" },
-    { "ecoli_position": 2504, "ref_base": "T", "resistance_bases": ["A", "C"], "drug": "linezolid" },
-    { "ecoli_position": 2505, "ref_base": "G", "resistance_bases": ["A"], "drug": "linezolid" },
-    { "ecoli_position": 2534, "ref_base": "C", "resistance_bases": ["T"], "drug": "linezolid" },
-    { "ecoli_position": 2572, "ref_base": "A", "resistance_bases": ["G"], "drug": "linezolid" },
-    { "ecoli_position": 2576, "ref_base": "G", "resistance_bases": ["T", "U", "A", "C"], "drug": "linezolid", "note": "Most prevalent 23S linezolid resistance mutation across genera" },
-    { "ecoli_position": 2603, "ref_base": "G", "resistance_bases": ["T"], "drug": "linezolid" }
+    { "ecoli_position": 2032, "ref_base": "G", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"], "evidence_note": "Kloss et al. 1999 mapped this position in archaeal selection (PMID 10556031)" },
+    { "ecoli_position": 2447, "ref_base": "G", "resistance_bases": ["T", "U"],     "drug": "linezolid",            "pmid": ["10556031", "22143525"], "evidence_note": "Original mutational mapping (Kloss 1999); reviewed in Long & Vester 2012" },
+    { "ecoli_position": 2453, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid",            "pmid": ["22143525"], "evidence_note": "Less prevalent; covered in Long & Vester 2012 review" },
+    { "ecoli_position": 2500, "ref_base": "T", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"] },
+    { "ecoli_position": 2503, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid,tedizolid",  "pmid": ["10556031", "16801432"], "evidence_note": "Methylation target of Cfr (Long et al. 2006, PMID 16801432); also direct mutation site" },
+    { "ecoli_position": 2504, "ref_base": "T", "resistance_bases": ["A", "C"],     "drug": "linezolid",            "pmid": ["10556031"] },
+    { "ecoli_position": 2505, "ref_base": "G", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"] },
+    { "ecoli_position": 2534, "ref_base": "C", "resistance_bases": ["T"],          "drug": "linezolid",            "pmid": ["22143525"] },
+    { "ecoli_position": 2572, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid",            "pmid": ["22143525"] },
+    { "ecoli_position": 2576, "ref_base": "G", "resistance_bases": ["T", "U", "A", "C"], "drug": "linezolid",     "pmid": ["11476839", "22143525"], "evidence_note": "First clinical description in S. aureus (Tsiodras et al. 2001, PMID 11476839). Most prevalent mutation across genera.", "note": "Most prevalent 23S linezolid resistance mutation across genera" },
+    { "ecoli_position": 2603, "ref_base": "G", "resistance_bases": ["T"],          "drug": "linezolid",            "pmid": ["22143525"] }
+  ],
+
+  "acquired_resistance_gene_references": {
+    "cfr":   { "pmid": "16801432", "summary": "Long KS et al. 2006: Cfr methylates A2503 of 23S rRNA conferring PhLOPSa resistance (phenicols, lincosamides, oxazolidinones, pleuromutilins, streptogramin A)." },
+    "optrA": { "pmid": "25977397", "summary": "Wang Y et al. 2015: optrA is a novel ABC-F gene conferring transferable resistance to oxazolidinones and phenicols in Enterococcus." },
+    "poxtA": { "pmid": "29635422", "summary": "Antonelli A et al. 2018: poxtA confers phenicol-oxazolidinone-tetracycline resistance." }
+  },
+
+  "review_references": [
+    { "pmid": "22143525", "summary": "Long KS, Vester B. 2012. Resistance to linezolid caused by modifications at its binding site on the ribosome. AAC. Comprehensive review of all 23S linezolid resistance mechanisms." },
+    { "pmid": "10556031", "summary": "Kloss P et al. 1999. Resistance mutations in 23S rRNA identify the site of action of the protein synthesis inhibitor linezolid in the ribosomal peptidyl transferase center. JMB. Foundational mutational mapping." }
   ],
 
   "ecoli_reference": {
@@ -35,7 +46,8 @@
       "end": 453661,
       "strand": "+",
       "expected_length_bp": 2923,
-      "copy_number_note": "S. aureus typically encodes 5 rrn operons; reads will map to all copies"
+      "copy_number_note": "S. aureus typically encodes 5 rrn operons; reads pile on a single reference copy",
+      "mlst_schemes": ["saureus"]
     },
     "Enterococcus_faecalis": {
       "amrfinder_organism": "Enterococcus_faecalis",
@@ -45,7 +57,8 @@
       "end": 253158,
       "strand": "+",
       "expected_length_bp": 2913,
-      "copy_number_note": "E. faecalis typically encodes 4 rrn operons"
+      "copy_number_note": "E. faecalis typically encodes 4 rrn operons",
+      "mlst_schemes": ["efaecalis"]
     },
     "Enterococcus_faecium": {
       "amrfinder_organism": "Enterococcus_faecium",
@@ -55,7 +68,8 @@
       "end": 467974,
       "strand": "+",
       "expected_length_bp": 2914,
-      "copy_number_note": "E. faecium typically encodes 6 rrn operons"
+      "copy_number_note": "E. faecium typically encodes 6 rrn operons",
+      "mlst_schemes": ["efaecium"]
     },
     "Streptococcus_pneumoniae": {
       "amrfinder_organism": "Streptococcus_pneumoniae",
@@ -65,17 +79,8 @@
       "end": 20043,
       "strand": "+",
       "expected_length_bp": 2902,
-      "copy_number_note": "S. pneumoniae typically encodes 4 rrn operons"
-    },
-    "Mycobacterium_tuberculosis": {
-      "amrfinder_organism": "Mycobacterium_tuberculosis",
-      "description": "Mycobacterium tuberculosis H37Rv rrl (single 23S rRNA copy)",
-      "genome_accession": "NC_000962.3",
-      "start": 1473658,
-      "end": 1476795,
-      "strand": "+",
-      "expected_length_bp": 3138,
-      "copy_number_note": "Single rrl copy — variants are homozygous, not heteroresistant"
+      "copy_number_note": "S. pneumoniae typically encodes 4 rrn operons",
+      "mlst_schemes": ["spneumoniae"]
     }
   }
 }

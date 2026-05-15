@@ -1,0 +1,107 @@
+cff-version: 1.2.0
+title: "linezolid-amr: integrated AMR profiling and 23S rRNA linezolid-resistance frequency analysis"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: "Linezolid-AMR contributors"
+    affiliation: ""
+url: "https://github.com/iowa69/linezolid-amr"
+repository-code: "https://github.com/iowa69/linezolid-amr"
+version: "0.1.2"
+date-released: "2026-05-15"
+license: MIT
+abstract: |
+  linezolid-amr combines NCBI AMRFinderPlus (acquired AMR gene + point-mutation
+  detection on an assembly) and tseemann's MLST with species-aware read-level
+  pileup of the 23S rRNA locus, capturing heteroresistant linezolid mutations
+  (e.g. G2576T, G2505A) in Staphylococcus aureus, Enterococcus faecalis,
+  Enterococcus faecium, and Streptococcus pneumoniae. Mutations are reported in
+  E. coli K-12 23S numbering via a pairwise-alignment-derived position map.
+keywords:
+  - linezolid
+  - oxazolidinone
+  - antimicrobial resistance
+  - 23S rRNA
+  - heteroresistance
+  - AMRFinderPlus
+  - MLST
+references:
+  - type: software
+    title: "NCBI AMRFinderPlus"
+    authors:
+      - family-names: Feldgarden
+        given-names: Michael
+    url: "https://github.com/ncbi/amr"
+    notes: "Acquired AMR gene + point-mutation detection."
+  - type: software
+    title: "mlst"
+    authors:
+      - family-names: Seemann
+        given-names: Torsten
+    url: "https://github.com/tseemann/mlst"
+    notes: "Multi-locus sequence typing and organism inference."
+  - type: article
+    title: "Resistance mutations in 23 S rRNA identify the site of action of the protein synthesis inhibitor linezolid in the ribosomal peptidyl transferase center"
+    authors:
+      - family-names: Kloss
+        given-names: P.
+    year: 1999
+    journal: "Journal of Molecular Biology"
+    identifiers:
+      - type: pmid
+        value: "10556031"
+    notes: "Foundational paper mapping the 23S resistance positions screened by this tool."
+  - type: article
+    title: "Linezolid resistance in a clinical isolate of Staphylococcus aureus"
+    authors:
+      - family-names: Tsiodras
+        given-names: S.
+    year: 2001
+    journal: "Lancet"
+    identifiers:
+      - type: pmid
+        value: "11476839"
+    notes: "First clinical description of the G2576T mutation."
+  - type: article
+    title: "Resistance to linezolid caused by modifications at its binding site on the ribosome"
+    authors:
+      - family-names: Long
+        given-names: K. S.
+      - family-names: Vester
+        given-names: B.
+    year: 2012
+    journal: "Antimicrobial Agents and Chemotherapy"
+    identifiers:
+      - type: pmid
+        value: "22143525"
+    notes: "Comprehensive review of all 23S linezolid resistance mechanisms."
+  - type: article
+    title: "The Cfr rRNA methyltransferase confers resistance to Phenicols, Lincosamides, Oxazolidinones, Pleuromutilins, and Streptogramin A antibiotics"
+    authors:
+      - family-names: Long
+        given-names: K. S.
+    year: 2006
+    journal: "Antimicrobial Agents and Chemotherapy"
+    identifiers:
+      - type: pmid
+        value: "16801432"
+  - type: article
+    title: "A novel gene, optrA, that confers transferable resistance to oxazolidinones and phenicols and its presence in Enterococcus faecalis and Enterococcus faecium of human and animal origin"
+    authors:
+      - family-names: Wang
+        given-names: Y.
+    year: 2015
+    journal: "Journal of Antimicrobial Chemotherapy"
+    identifiers:
+      - type: pmid
+        value: "25977397"
+  - type: article
+    title: "Characterization of poxtA, a novel phenicol-oxazolidinone-tetracycline resistance gene"
+    authors:
+      - family-names: Antonelli
+        given-names: A.
+    year: 2018
+    journal: "Journal of Antimicrobial Chemotherapy"
+    identifiers:
+      - type: pmid
+        value: "29635422"

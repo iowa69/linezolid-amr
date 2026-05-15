@@ -42,3 +42,4 @@ bioconda-recipes/
 build/
 .pytest_cache/
 *.egg-info/
+.claude/

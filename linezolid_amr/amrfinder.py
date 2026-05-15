@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
+import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -63,22 +65,60 @@ def amrfinder_available() -> bool:
     return shutil.which("amrfinder") is not None
 
 
+def _amrfinder_db_dir() -> Path | None:
+    """Best-effort guess of where amrfinder's data lives."""
+    binp = shutil.which("amrfinder")
+    if not binp:
+        return None
+    # amrfinder ships data at <prefix>/share/amrfinderplus/data/latest
+    prefix = Path(binp).resolve().parent.parent
+    candidate = prefix / "share" / "amrfinderplus" / "data" / "latest"
+    return candidate
+
+
+def amrfinder_db_ready() -> bool:
+    """Return True if amrfinder's database is in place."""
+    db = _amrfinder_db_dir()
+    return bool(db and db.exists())
+
+
+def ensure_amrfinder_db(log_fh=None) -> None:
+    """Run `amrfinder -u` if the database is missing."""
+    if amrfinder_db_ready():
+        return
+    print(
+        ">> AMRFinderPlus database not found — running `amrfinder -u` (~150 MB, one-time).",
+        file=sys.stderr,
+    )
+    cmd = ["amrfinder", "-u"]
+    proc = subprocess.run(cmd, stdout=log_fh or subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "amrfinder -u failed. Run it manually and retry."
+        )
+
+
 def run_amrfinder(
     assembly: Path,
     organism: str,
     outdir: Path,
     threads: int = 4,
+    plus: bool = False,
+    auto_update_db: bool = True,
     extra_args: Iterable[str] | None = None,
 ) -> Path:
-    """Run AMRFinderPlus on an assembly. Returns the path to the TSV output."""
+    """Run AMRFinderPlus on an assembly. Returns path to the TSV output."""
     if not amrfinder_available():
         raise RuntimeError(
-            "amrfinder not found on PATH. Install via 'conda install -c bioconda ncbi-amrfinderplus' "
-            "or 'mamba install -c bioconda ncbi-amrfinderplus'."
+            "amrfinder not found on PATH. Install via `conda install -c bioconda ncbi-amrfinderplus`."
         )
     outdir.mkdir(parents=True, exist_ok=True)
     tsv = outdir / "amrfinder.tsv"
     log = outdir / "amrfinder.log"
+
+    if auto_update_db:
+        with log.open("a") as logfh:
+            ensure_amrfinder_db(log_fh=logfh)
 
     cmd = [
         "amrfinder",
@@ -93,10 +133,12 @@ def run_amrfinder(
         "--name",
         assembly.stem,
     ]
+    if plus:
+        cmd.append("--plus")
     if extra_args:
         cmd.extend(extra_args)
 
-    with log.open("w") as logfh:
+    with log.open("a") as logfh:
         logfh.write("$ " + " ".join(cmd) + "\n")
         logfh.flush()
         proc = subprocess.run(cmd, stdout=logfh, stderr=subprocess.STDOUT)
@@ -117,8 +159,8 @@ _FIELD_ALIASES = {
     "Gene symbol": ("Gene symbol", "Element symbol"),
     "Sequence name": ("Sequence name", "Element name"),
     "Scope": ("Scope",),
-    "Element type": ("Element type",),
-    "Element subtype": ("Element subtype",),
+    "Element type": ("Element type", "Type"),
+    "Element subtype": ("Element subtype", "Subtype"),
     "Class": ("Class",),
     "Subclass": ("Subclass",),
     "Method": ("Method",),

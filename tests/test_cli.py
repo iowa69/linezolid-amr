@@ -17,7 +17,9 @@ def test_list_organisms():
     result = CliRunner().invoke(main, ["list-organisms"])
     assert result.exit_code == 0
     assert "Staphylococcus_aureus" in result.output
-    assert "Mycobacterium_tuberculosis" in result.output
+    assert "Enterococcus_faecium" in result.output
+    # Mtb was removed in v0.1.2 (domain-specific tools cover it)
+    assert "Mycobacterium_tuberculosis" not in result.output
 
 
 def test_version():

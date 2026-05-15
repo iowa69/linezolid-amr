@@ -1,136 +1,161 @@
-# linezolid-amr
+<div align="center">
 
-**Integrated AMR profiling and 23S rRNA linezolid-resistance frequency analysis.**
-
-`linezolid-amr` runs two analyses from one command and combines them into a single report:
-
-1. **AMRFinderPlus** on an assembly — detects all AMR genes and known point mutations (cfr, optrA, poxtA, ribosomal protein L3/L4/L22 mutations, ...).
-2. **23S rRNA mutation-frequency** on raw paired reads — maps to a species-specific 23S reference and reports allele frequencies at the canonical linezolid-resistance positions (G2576T, G2505A, G2447T, C2534T, A2503G, ...). This catches **heteroresistance**: mutations present in only some of the multiple 23S rRNA operon copies, which assembly-based callers miss.
-
-The same `--organism` flag drives both AMRFinderPlus species mode and 23S reference selection. Mutations are reported in **E. coli K-12 23S numbering** (the clinical-literature convention) via a pairwise-alignment-derived position map.
-
-## Supported organisms (23S analysis)
-
-| Organism                       | 23S copies | Reference (1st copy)                       |
-|--------------------------------|:----------:|--------------------------------------------|
-| Staphylococcus aureus          | 5          | NCTC 8325 (NC_007795.1) — 2,923 bp         |
-| Enterococcus faecalis          | 4          | V583 (NC_004668.1) — 2,913 bp              |
-| Enterococcus faecium           | 6          | DO (NC_017960.1) — 2,914 bp                |
-| Streptococcus pneumoniae       | 4          | TIGR4 (NC_003028.3) — 2,902 bp             |
-
-AMRFinderPlus supports many more organisms; the 23S step will simply be skipped for organisms outside this list.
-
-## Install
-
-### From bioconda (once the recipe is accepted)
-
-```bash
-conda install -n linezolid-amr -c bioconda -c conda-forge linezolid-amr
-conda activate linezolid-amr
+```
+   _ _                           _ _     _
+  | (_)                         | (_)   | |
+  | |_ _ __   ___ _______  _ __ | |_  __| |   __ _ _ __ ___  _ __
+  | | | '_ \ / _ \_  / _ \| '_ \| | |/ _` |  / _` | '_ ` _ \| '__|
+  | | | | | |  __// / (_) | | | | | | (_| | | (_| | | | | | | |
+  |_|_|_| |_|\___/___\___/|_| |_|_|_|\__,_|  \__,_|_| |_| |_|_|
 ```
 
-### From source
+**🧬 Integrated AMR profiling + 23S rRNA linezolid-resistance frequency analysis**
+
+[![CI](https://github.com/iowa69/linezolid-amr/actions/workflows/ci.yml/badge.svg)](https://github.com/iowa69/linezolid-amr/actions)
+[![bioconda](https://img.shields.io/conda/dn/bioconda/linezolid-amr.svg?label=bioconda)](https://anaconda.org/bioconda/linezolid-amr)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+</div>
+
+---
+
+## 🎯 What it does
+
+One command runs **three** analyses and writes a combined report:
+
+| Step | Tool | What it gives you |
+|---|---|---|
+| 1️⃣ **MLST** | `mlst` (Seemann) | Sequence Type + organism auto-detection |
+| 2️⃣ **AMR profile** | NCBI AMRFinderPlus | All AMR/virulence/stress genes & point mutations |
+| 3️⃣ **23S heteroresistance** | minimap2 + pysam | Allele frequency at 11 canonical LZD positions |
+
+🧪 **Supported organisms** (23S step): *Staphylococcus aureus*, *Enterococcus faecalis*, *Enterococcus faecium*, *Streptococcus pneumoniae*. Linezolid resistance is reported in **E. coli K-12 23S numbering** (clinical convention) — translated automatically.
+
+🔬 **Why read-level?** *S. aureus* and *Enterococcus* spp. carry 4–6 copies of the 23S rRNA operon. A G2576T mutation in only a subset of copies produces heteroresistance that assembly-only callers miss. Reading allele frequencies straight off the reads is the only way to catch it.
+
+---
+
+## ⚡ Install
 
 ```bash
-git clone https://github.com/iowa69/linezolid-amr
-cd linezolid-amr
-conda env create -n linezolid-amr -c bioconda -c conda-forge \
-    python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools
+# 🐍 from bioconda (once accepted)
+conda create -n linezolid-amr -c bioconda -c conda-forge linezolid-amr
+conda activate linezolid-amr
+
+# or from source
+git clone https://github.com/iowa69/linezolid-amr && cd linezolid-amr
+conda create -n linezolid-amr -c bioconda -c conda-forge \
+    python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools mlst
 conda activate linezolid-amr
 pip install -e .
 ```
 
-### One-time setup
-
+One-time downloads (the tool prompts if missing):
 ```bash
-# Download AMRFinderPlus database (~150 MB)
-amrfinder -u
-
-# Fetch 23S references for the species you'll analyze (~25 KB total per species)
-linezolid-amr fetch-references --organism Staphylococcus_aureus
-# or pull all five at once:
-linezolid-amr fetch-references
+amrfinder -u                                    # AMRFinder DB (~150 MB)
+linezolid-amr fetch-references                  # 23S references (~120 KB)
 ```
 
-References are cached under `$XDG_DATA_HOME/linezolid-amr/references` (defaults to `~/.local/share/linezolid-amr/references`). Override with `$LINEZOLID_AMR_REFDIR`.
+---
 
-## Usage
+## 🚀 Usage
+
+### Single sample
 
 ```bash
-linezolid-amr run \
-    --assembly  sample.fasta \
-    --r1        sample_R1.fastq.gz \
-    --r2        sample_R2.fastq.gz \
-    --organism  Staphylococcus_aureus \
-    --outdir    results/sample \
-    --sample    sample \
-    --threads   8
+linezolid-amr run -a sample.fasta -1 sample_R1.fq.gz -2 sample_R2.fq.gz \
+                  -o results/sample
 ```
 
-Subcommands:
+`--organism` is optional — MLST infers it. Pass `-O Enterococcus_faecium` to override.
 
-| Command            | Purpose                                                          |
-|--------------------|------------------------------------------------------------------|
-| `run`              | Full pipeline (AMRFinderPlus + 23S analysis + combined report)   |
-| `amrfinder`        | AMRFinderPlus step only                                          |
-| `rrna23s`          | 23S analysis only (map + pileup + VCF)                           |
-| `fetch-references` | Download/build references from NCBI                              |
-| `list-organisms`   | List 23S-supported organisms                                     |
+### 🗂️ Folder mode (batch)
 
-Important options:
+Drop all `*.fasta` + paired `*.fastq.gz` in one folder. Recognized read suffixes:
+`_R1_001`/`_R2_001`, `_R1`/`_R2`, `_1`/`_2` × `.fastq[.gz]`/`.fq[.gz]`.
 
-* `--min-af 0.01` — minimum alt-allele frequency to report (default 1 %).
-* `--min-depth 20` — minimum read depth to call a resistance allele.
-* `--skip-amrfinder` / `--skip-rrna23s` — skip one of the two steps.
+```bash
+linezolid-amr folder -i input_dir/ -o results/
+```
 
-## Output structure
+Produces `results/ALL_samples.summary_wide.csv` (one row per sample, Kleborate-style) and `results/ALL_samples.summary_long.csv` (one row per gene/mutation).
+
+### All flags
+
+```
+linezolid-amr run / folder
+  -a, --assembly       FASTA assembly                       (run only)
+  -1, --r1             Forward reads                        (run only)
+  -2, --r2             Reverse reads                        (run only)
+  -i, --input          Folder with assemblies+reads         (folder only)
+  -o, --outdir         Output directory                     (required)
+  -s, --sample         Sample name                          (default: assembly stem)
+  -O, --organism       Override MLST-inferred organism
+  -t, --threads        CPUs (default: all available)
+      --plus           AMRFinderPlus --plus (stress/virulence/biocide)
+      --min-af 0.01    Min alt-allele frequency at 23S
+      --min-depth 20   Min depth at 23S
+      --skip-amrfinder
+      --skip-rrna23s
+```
+
+---
+
+## 📁 Output
 
 ```
 results/sample/
-├── amrfinder/
-│   ├── amrfinder.tsv                  # AMRFinderPlus raw TSV (all hits)
-│   └── amrfinder.log
+├── amrfinder/amrfinder.tsv                    # all AMR/virulence hits
 ├── rrna23s/
-│   ├── sample.23S.bam                 # sorted, indexed alignment
-│   ├── sample.23S.bam.bai
-│   ├── sample.23S.vcf.gz              # all variants in the 23S locus (bcftools, ploidy=1)
-│   ├── sample.23S.vcf.gz.csi
-│   ├── sample.23S_lzd_pileup.tsv      # allele counts/frequencies at canonical LZD positions
-│   ├── sample.23S.map.log
-│   └── sample.23S.vcf.log
-├── sample.linezolid_amr.json          # full machine-readable report
-└── sample.linezolid_amr.txt           # human-readable summary
+│   ├── sample.23S.bam                          # sorted, indexed alignment
+│   ├── sample.23S.vcf.gz                       # all 23S variants (bcftools)
+│   └── sample.23S_lzd_pileup.tsv               # allele frequencies at LZD sites
+├── sample.linezolid_amr.json                   # combined machine-readable report
+├── sample.linezolid_amr.txt                    # plain-text summary
+├── sample.summary_wide.csv                     # 1 row, AMR buckets as columns
+└── sample.summary_long.csv                     # 1 row per gene/mutation
 ```
 
-The pileup TSV columns:
+`folder` mode adds two cohort-level CSVs at the top of `outdir/`.
 
-| column             | meaning                                                              |
-|--------------------|----------------------------------------------------------------------|
-| `species_position` | 1-based position in the species 23S reference                        |
-| `ecoli_position`   | corresponding E. coli K-12 23S position (literature standard)        |
-| `ref_base`         | wild-type base                                                       |
-| `depth`            | total reads at this position                                         |
-| `counts`           | per-base counts (e.g. `A=2;C=1;G=820`)                               |
-| `alt_alleles`      | non-reference alleles passing thresholds (`base:count:af[*=resistance]`) |
-| `is_resistance`    | `True` if a known resistance allele was observed above thresholds    |
-| `drug`             | resistance phenotype the position is associated with                 |
+---
 
-## Interpreting heteroresistance
+## 🧫 Worked example output
 
-Because organisms like *S. aureus* and *Enterococcus* spp. have 4-6 copies of the 23S rRNA operon, low (1-50 %) alt-allele frequencies at canonical positions are biologically meaningful: they reflect the fraction of rRNA operons that carry the resistance mutation. A G2576T at 25 % AF means ~1 of 4-5 copies is mutated — a classic heteroresistant phenotype that is often missed by assembly-only callers (where the consensus base remains G).
+```
+=== test ===
+>> MLST / organism inference...
+   organism: Enterococcus_faecium   MLST scheme: efaecium   ST: 17
+>> Running AMRFinderPlus...
+   17 hits, 3 linezolid-relevant
+>> Running 23S rRNA analysis...
+   11 positions; 1 with resistance allele
 
-The `summary.linezolid_resistance_call` flag in the JSON is `True` if either:
-
-* AMRFinderPlus reports a linezolid-relevant hit (cfr / optrA / poxtA / 23S point mutation / L3-L4-L22 mutation), **or**
-* The 23S pileup observes a canonical resistance allele at AF ≥ `--min-af` and depth ≥ `--min-depth`.
-
-## Building the bioconda recipe locally
-
-```bash
-conda install -c conda-forge boa conda-build
-conda-build conda-recipe/
+Linezolid resistance call: POSITIVE
 ```
 
-## License
+23S pileup row:
+```
+ecoli_pos  ref  depth  counts        alt_alleles            is_resistance
+2576       G    173    G=58; T=115   T:115:0.6647*          True   ← 4/6 operoni mutati
+```
+
+---
+
+## 📚 References
+
+All canonical 23S linezolid-resistance positions carry verified PMID citations in [`linezolid_amr/data/references/loci.json`](linezolid_amr/data/references/loci.json). See [`CITATION.cff`](CITATION.cff) for the full bibliography.
+
+Key papers:
+- Kloss et al. 1999 (foundational mutational mapping) — PMID 10556031
+- Tsiodras et al. 2001 (first clinical G2576T) — PMID 11476839
+- Long & Vester 2012 (comprehensive review) — PMID 22143525
+- Long et al. 2006 (Cfr methyltransferase) — PMID 16801432
+- Wang et al. 2015 (optrA discovery) — PMID 25977397
+- Antonelli et al. 2018 (poxtA discovery) — PMID 29635422
+
+---
+
+## 📜 License
 
 MIT — see [LICENSE](LICENSE).
