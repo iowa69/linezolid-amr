@@ -1,0 +1,12 @@
+#chrom	start	end	name	ref_base	resistance_bases	drug
+Staphylococcus_aureus_23S	2058	2059	23S_E2032_G_to_A	G	A	linezolid
+Staphylococcus_aureus_23S	2473	2474	23S_E2447_G_to_T/U	G	T,U	linezolid
+Staphylococcus_aureus_23S	2479	2480	23S_E2453_A_to_G	A	G	linezolid
+Staphylococcus_aureus_23S	2526	2527	23S_E2500_T_to_A	T	A	linezolid
+Staphylococcus_aureus_23S	2529	2530	23S_E2503_A_to_G	A	G	linezolid,tedizolid
+Staphylococcus_aureus_23S	2530	2531	23S_E2504_T_to_A/C	T	A,C	linezolid
+Staphylococcus_aureus_23S	2531	2532	23S_E2505_G_to_A	G	A	linezolid
+Staphylococcus_aureus_23S	2560	2561	23S_E2534_C_to_T	C	T	linezolid
+Staphylococcus_aureus_23S	2598	2599	23S_E2572_A_to_G	A	G	linezolid
+Staphylococcus_aureus_23S	2602	2603	23S_E2576_G_to_T/U/A/C	G	T,U,A,C	linezolid
+Staphylococcus_aureus_23S	2629	2630	23S_E2603_G_to_T	G	T	linezolid

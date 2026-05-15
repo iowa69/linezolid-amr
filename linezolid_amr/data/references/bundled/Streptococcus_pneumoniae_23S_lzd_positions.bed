@@ -1,0 +1,12 @@
+#chrom	start	end	name	ref_base	resistance_bases	drug
+Streptococcus_pneumoniae_23S	2033	2034	23S_E2032_G_to_A	G	A	linezolid
+Streptococcus_pneumoniae_23S	2448	2449	23S_E2447_G_to_T/U	G	T,U	linezolid
+Streptococcus_pneumoniae_23S	2454	2455	23S_E2453_A_to_G	A	G	linezolid
+Streptococcus_pneumoniae_23S	2501	2502	23S_E2500_T_to_A	T	A	linezolid
+Streptococcus_pneumoniae_23S	2504	2505	23S_E2503_A_to_G	A	G	linezolid,tedizolid
+Streptococcus_pneumoniae_23S	2505	2506	23S_E2504_T_to_A/C	T	A,C	linezolid
+Streptococcus_pneumoniae_23S	2506	2507	23S_E2505_G_to_A	G	A	linezolid
+Streptococcus_pneumoniae_23S	2535	2536	23S_E2534_C_to_T	C	T	linezolid
+Streptococcus_pneumoniae_23S	2573	2574	23S_E2572_A_to_G	A	G	linezolid
+Streptococcus_pneumoniae_23S	2577	2578	23S_E2576_G_to_T/U/A/C	G	T,U,A,C	linezolid
+Streptococcus_pneumoniae_23S	2604	2605	23S_E2603_G_to_T	G	T	linezolid

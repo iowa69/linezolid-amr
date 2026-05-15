@@ -1,0 +1,12 @@
+#chrom	start	end	name	ref_base	resistance_bases	drug
+Enterococcus_faecium_23S	2045	2046	23S_E2032_G_to_A	G	A	linezolid
+Enterococcus_faecium_23S	2460	2461	23S_E2447_G_to_T/U	G	T,U	linezolid
+Enterococcus_faecium_23S	2466	2467	23S_E2453_A_to_G	A	G	linezolid
+Enterococcus_faecium_23S	2513	2514	23S_E2500_T_to_A	T	A	linezolid
+Enterococcus_faecium_23S	2516	2517	23S_E2503_A_to_G	A	G	linezolid,tedizolid
+Enterococcus_faecium_23S	2517	2518	23S_E2504_T_to_A/C	T	A,C	linezolid
+Enterococcus_faecium_23S	2518	2519	23S_E2505_G_to_A	G	A	linezolid
+Enterococcus_faecium_23S	2547	2548	23S_E2534_C_to_T	C	T	linezolid
+Enterococcus_faecium_23S	2585	2586	23S_E2572_A_to_G	A	G	linezolid
+Enterococcus_faecium_23S	2589	2590	23S_E2576_G_to_T/U/A/C	G	T,U,A,C	linezolid
+Enterococcus_faecium_23S	2616	2617	23S_E2603_G_to_T	G	T	linezolid

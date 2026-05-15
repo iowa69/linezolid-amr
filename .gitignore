@@ -43,3 +43,5 @@ build/
 .pytest_cache/
 *.egg-info/
 .claude/
+linezolid_amr/data/references/bundled/*.fai
+linezolid_amr/data/references/bundled/*.mmi

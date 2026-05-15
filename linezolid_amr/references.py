@@ -1,4 +1,11 @@
-"""Reference selection and loci metadata for 23S rRNA linezolid resistance analysis."""
+"""Reference selection and loci metadata for 23S rRNA linezolid resistance analysis.
+
+References ship inside the package under data/references/bundled/ so the tool
+works offline out of the box. Users can override individual files by setting
+LINEZOLID_AMR_REFDIR to a directory containing same-named files; that
+directory wins over bundled data when files exist there. The legacy
+fetch-references command still works and writes into the override directory.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +14,10 @@ import os
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Iterable
 
 LOCI_RESOURCE = "loci.json"
 PACKAGE_REFDIR = "linezolid_amr.data.references"
+PACKAGE_BUNDLED_REFDIR = "linezolid_amr.data.references.bundled"
 
 
 @dataclass(frozen=True)
@@ -104,47 +111,77 @@ def get_organism(organism: str) -> OrganismRef:
     )
 
 
-def cache_dir() -> Path:
-    """Resolve the local reference cache directory.
+def override_dir() -> Path | None:
+    """Optional override directory for users who want to swap in custom references.
 
     Resolution order:
       1) $LINEZOLID_AMR_REFDIR if set
-      2) $XDG_DATA_HOME/linezolid-amr/references
-      3) ~/.local/share/linezolid-amr/references
+      2) $XDG_DATA_HOME/linezolid-amr/references if it exists
+      3) ~/.local/share/linezolid-amr/references if it exists
+
+    Returns None if no override directory is set or present.
     """
     env = os.environ.get("LINEZOLID_AMR_REFDIR")
     if env:
         return Path(env).expanduser().resolve()
     xdg = os.environ.get("XDG_DATA_HOME")
+    candidate = (Path(xdg).expanduser() if xdg else Path.home() / ".local" / "share")
+    candidate = (candidate / "linezolid-amr" / "references").resolve()
+    if candidate.exists():
+        return candidate
+    return None
+
+
+# Back-compat alias (older code/tests used cache_dir()). Always returns a path —
+# either the override location or the default cache path (whether it exists or not).
+def cache_dir() -> Path:
+    od = override_dir()
+    if od is not None:
+        return od
+    xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg).expanduser() if xdg else Path.home() / ".local" / "share"
     return (base / "linezolid-amr" / "references").resolve()
 
 
+def _bundled_path(name: str) -> Path:
+    """Return a filesystem Path to a bundled reference file inside the package."""
+    return Path(str(resources.files(PACKAGE_BUNDLED_REFDIR).joinpath(name)))
+
+
+def _resolve(name: str) -> Path:
+    """Override directory wins if it has the file; otherwise package data."""
+    od = override_dir()
+    if od is not None:
+        candidate = od / name
+        if candidate.exists():
+            return candidate
+    return _bundled_path(name)
+
+
 def organism_fasta_path(organism: str) -> Path:
-    return cache_dir() / f"{organism}_23S.fasta"
+    return _resolve(f"{organism}_23S.fasta")
 
 
 def organism_bed_path(organism: str) -> Path:
-    """BED of canonical LZD positions in species-specific coordinates (computed by fetch-references)."""
-    return cache_dir() / f"{organism}_23S_lzd_positions.bed"
+    return _resolve(f"{organism}_23S_lzd_positions.bed")
 
 
 def organism_position_map_path(organism: str) -> Path:
-    """TSV mapping E. coli positions to species-specific positions in the bundled reference."""
-    return cache_dir() / f"{organism}_23S_position_map.tsv"
+    return _resolve(f"{organism}_23S_position_map.tsv")
 
 
 def ecoli_fasta_path() -> Path:
-    return cache_dir() / "ecoli_K12_23S_rrlB.fasta"
+    return _resolve("ecoli_K12_23S_rrlB.fasta")
 
 
 def ensure_references_available(organism: str) -> tuple[Path, Path]:
-    """Return (fasta, bed). Raises if references not yet fetched."""
+    """Return (fasta, bed). Bundled references are always present."""
     fasta = organism_fasta_path(organism)
     bed = organism_bed_path(organism)
     if not fasta.exists() or not bed.exists():
         raise FileNotFoundError(
-            f"References for '{organism}' not found in cache ({cache_dir()}). "
-            f"Run 'linezolid-amr fetch-references' first."
+            f"References for '{organism}' not found. Bundled set may be missing — "
+            f"reinstall linezolid-amr or run 'linezolid-amr fetch-references' "
+            f"to populate an override directory."
         )
     return fasta, bed

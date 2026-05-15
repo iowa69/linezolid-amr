@@ -69,3 +69,26 @@ def test_unknown_organism_raises():
 def test_cache_dir_respects_env(monkeypatch, tmp_path):
     monkeypatch.setenv("LINEZOLID_AMR_REFDIR", str(tmp_path))
     assert ref_mod.cache_dir() == tmp_path
+
+
+def test_bundled_references_present(monkeypatch, tmp_path):
+    """Every supported organism must have a bundled FASTA + BED + position map."""
+    # Force the resolver to skip any user cache, falling back to bundled package data.
+    monkeypatch.setenv("LINEZOLID_AMR_REFDIR", str(tmp_path / "no-such-dir"))
+    for organism in ref_mod.list_organisms():
+        fasta = ref_mod.organism_fasta_path(organism)
+        bed = ref_mod.organism_bed_path(organism)
+        pmap = ref_mod.organism_position_map_path(organism)
+        assert fasta.exists(), f"missing bundled FASTA: {organism}"
+        assert bed.exists(), f"missing bundled BED: {organism}"
+        assert pmap.exists(), f"missing bundled position map: {organism}"
+        # Sanity: fasta header + ≥2800 bp of sequence
+        head = fasta.read_text().splitlines()
+        assert head[0].startswith(">"), f"bad FASTA header: {fasta}"
+        seq_len = sum(len(l) for l in head[1:] if not l.startswith(">"))
+        assert seq_len > 2800, f"{organism} 23S length {seq_len} too short"
+
+
+def test_ecoli_master_bundled(monkeypatch, tmp_path):
+    monkeypatch.setenv("LINEZOLID_AMR_REFDIR", str(tmp_path / "no-such-dir"))
+    assert ref_mod.ecoli_fasta_path().exists()

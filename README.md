@@ -50,11 +50,16 @@ conda activate linezolid-amr
 pip install -e .
 ```
 
-One-time downloads (the tool prompts if missing):
+One-time downloads — **only the AMRFinder DB** (23S references ship inside the package and work offline):
 ```bash
-amrfinder -u                                    # AMRFinder DB (~150 MB)
-linezolid-amr fetch-references                  # 23S references (~120 KB)
+amrfinder -u                                    # AMRFinder DB (~150 MB, one-time)
+# 23S references already bundled — nothing else to fetch
 ```
+
+> 💾 **Bundled, immutable references.** Each release pins the exact NCBI-verified
+> 23S coordinates so results are fully reproducible. To override, set
+> `LINEZOLID_AMR_REFDIR=/path/to/custom/refs` and the tool prefers your files
+> when they exist there.
 
 ---
 
