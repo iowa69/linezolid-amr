@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import click
 from linezolid_amr import __version__
 from linezolid_amr import amrfinder as amr_mod
 from linezolid_amr import fetch_references as fetch_mod
-from linezolid_amr import mlst as mlst_mod
+from linezolid_amr import internal_mlst as mlst_mod
 from linezolid_amr import references as ref_mod
 from linezolid_amr import reporting as report_mod
 from linezolid_amr import rrna23s as rrna_mod
@@ -21,7 +20,28 @@ from linezolid_amr import summary as summary_mod
 
 DEFAULT_THREADS = max(os.cpu_count() or 4, 1)
 
-ORGANISMS_HELP = "Supported organisms for the 23S step: " + ", ".join(ref_mod.list_organisms()) + "."
+_SUPPORTED_ORGS = ref_mod.list_organisms()
+
+ORGANISMS_HELP = "Supported organisms (23S + MLST): " + ", ".join(_SUPPORTED_ORGS) + "."
+
+MAIN_DESCRIPTION = f"""linezolid-amr — integrated AMR profiling + 23S rRNA linezolid-resistance analysis.
+
+\b
+SUPPORTED ORGANISMS (both 23S heteroresistance and MLST sequence typing):
+  • Staphylococcus aureus
+  • Enterococcus faecalis
+  • Enterococcus faecium
+  • Streptococcus pneumoniae
+
+\b
+PIPELINE STAGES:
+  1. MLST → infers organism + Sequence Type from the assembly (in-house, no external mlst tool)
+  2. AMRFinderPlus → all AMR / virulence / stress genes + canonical point mutations
+  3. 23S rRNA read pileup → allele frequencies at canonical linezolid-resistance positions
+                          (catches heteroresistance via multi-operon mixed reads)
+
+For organisms outside the four above the 23S and MLST steps are skipped and
+only AMRFinderPlus runs (organism passed via -O / --organism)."""
 
 
 _BANNER = r"""
@@ -34,6 +54,13 @@ _BANNER = r"""
 """
 
 
+def _print_banner() -> None:
+    """Show banner + supported organism list before any run."""
+    click.echo(_BANNER)
+    click.echo("Supported organisms: " + ", ".join(_SUPPORTED_ORGS))
+    click.echo("")
+
+
 # ---------------- helpers for folder mode ---------------- #
 
 _ASSEMBLY_EXTS = (".fasta", ".fa", ".fas", ".fna")
@@ -43,7 +70,6 @@ _R2_PATTERNS   = ("_R2_001", "_R2", "_2")
 
 
 def _strip_assembly_ext(name: str) -> str | None:
-    """Return the basename without the assembly extension, or None if no match."""
     for ext in _ASSEMBLY_EXTS:
         if name.lower().endswith(ext):
             return name[: -len(ext)]
@@ -51,11 +77,6 @@ def _strip_assembly_ext(name: str) -> str | None:
 
 
 def _find_paired_reads(basename: str, folder: Path) -> tuple[Path, Path | None] | None:
-    """Find R1/R2 fastq files matching `basename` in `folder`.
-
-    Strategy: for each candidate fastq file in folder, see if its name starts
-    with `basename<R1_PATTERN>.<ext>` for any pattern/ext combination.
-    """
     candidates = []
     for f in folder.iterdir():
         if not f.is_file():
@@ -85,11 +106,6 @@ def _find_paired_reads(basename: str, folder: Path) -> tuple[Path, Path | None] 
 
 
 def discover_samples(folder: Path) -> list[dict]:
-    """Discover (assembly, r1, r2, sample) triples in a folder.
-
-    Returns a list of dicts: {sample, assembly, r1, r2}. Samples whose reads
-    cannot be paired are reported via a 'missing_reads' marker.
-    """
     folder = folder.resolve()
     out: list[dict] = []
     for f in sorted(folder.iterdir()):
@@ -114,31 +130,31 @@ def _resolve_organism(
     assembly: Path,
     threads: int,
 ) -> tuple[str | None, str | None, str | None]:
-    """Return (organism, mlst_scheme, st). Apply MLST→organism inference."""
+    """Return (organism, mlst_scheme, st). In-house MLST infers organism."""
     mlst_scheme = None
     st = None
     mlst_organism = None
-    if mlst_mod.mlst_available():
+
+    if mlst_mod.blastn_available() and mlst_mod.all_schemes_available():
         try:
             mlst_organism, res = mlst_mod.infer_organism(assembly, threads=threads)
             mlst_scheme, st = res.scheme, res.st
-        except mlst_mod.MlstUnsupportedOrganism as e:
-            if not user_organism:
-                raise click.ClickException(str(e))
-            click.echo(f"   MLST: {e} (using user --organism)", err=True)
-            try:
-                res = mlst_mod.run_mlst(assembly, threads=threads)
-                mlst_scheme, st = res.scheme, res.st
-            except Exception:
-                pass
         except mlst_mod.MlstNoMatch as e:
             if not user_organism:
                 raise click.ClickException(str(e))
             click.echo(f"   MLST: no scheme matched; using user --organism", err=True)
+        except mlst_mod.MlstUnsupportedOrganism as e:
+            if not user_organism:
+                raise click.ClickException(str(e))
+            click.echo(f"   MLST: {e} (using user --organism)", err=True)
     elif not user_organism:
-        raise click.ClickException(
-            "Neither --organism nor `mlst` is available. Provide --organism or install mlst."
+        msg = (
+            "Internal MLST cannot run: "
+            + ("`blastn` not on PATH (install via `conda install -c bioconda blast`). " if not mlst_mod.blastn_available() else "")
+            + ("MLST schemes not bundled in this build — run `linezolid-amr fetch-mlst-schemes`. " if not mlst_mod.all_schemes_available() else "")
+            + "Pass --organism manually or fix the above."
         )
+        raise click.ClickException(msg)
 
     organism = user_organism or mlst_organism
     if user_organism and mlst_organism and user_organism != mlst_organism:
@@ -150,25 +166,14 @@ def _resolve_organism(
 
 
 def _run_single(
-    sample: str,
-    assembly: Path,
-    r1: Path,
-    r2: Path | None,
-    user_organism: str | None,
-    outdir: Path,
-    threads: int,
-    min_af: float,
-    min_depth: int,
-    plus: bool,
-    skip_amrfinder: bool,
-    skip_rrna23s: bool,
+    sample: str, assembly: Path, r1: Path, r2: Path | None,
+    user_organism: str | None, outdir: Path, threads: int,
+    min_af: float, min_depth: int, plus: bool,
+    skip_amrfinder: bool, skip_rrna23s: bool,
 ) -> dict:
-    """Run the full pipeline for one sample. Returns dict with paths + key results."""
     outdir.mkdir(parents=True, exist_ok=True)
-
     click.echo(f"\n=== {sample} ===")
 
-    # 1) Organism resolution (MLST first)
     click.echo(">> MLST / organism inference...")
     organism, mlst_scheme, st = _resolve_organism(user_organism, assembly, threads)
     click.echo(f"   organism: {organism}   MLST scheme: {mlst_scheme or '-'}   ST: {st or '-'}")
@@ -180,40 +185,29 @@ def _run_single(
         "threads": threads, "min_af": min_af, "min_depth": min_depth, "plus": plus,
     }
 
-    # 2) AMRFinderPlus
     amr_hits = []
     if not skip_amrfinder:
         click.echo(">> Running AMRFinderPlus...")
-        amr_outdir = outdir / "amrfinder"
-        tsv = amr_mod.run_amrfinder(assembly, organism, amr_outdir, threads=threads, plus=plus)
+        tsv = amr_mod.run_amrfinder(assembly, organism, outdir / "amrfinder", threads=threads, plus=plus)
         amr_hits = amr_mod.parse_amrfinder_tsv(tsv)
-        n_lzd = len(amr_mod.linezolid_relevant_hits(amr_hits))
-        click.echo(f"   {len(amr_hits)} hits, {n_lzd} linezolid-relevant")
+        click.echo(f"   {len(amr_hits)} hits, {len(amr_mod.linezolid_relevant_hits(amr_hits))} linezolid-relevant")
 
-    # 3) 23S rRNA
     pileup_calls = []
     vcf = None
     if not skip_rrna23s:
-        if organism not in ref_mod.list_organisms():
-            click.echo(
-                f"   organism '{organism}' not supported for 23S analysis — skipping",
-                err=True,
-            )
+        if organism not in _SUPPORTED_ORGS:
+            click.echo(f"   organism '{organism}' not supported for 23S analysis — skipping", err=True)
         else:
             click.echo(">> Running 23S rRNA analysis...")
             rrna_outdir = outdir / "rrna23s"
             fasta = ref_mod.organism_fasta_path(organism)
             ref_mod.ensure_references_available(organism)
             bam = rrna_mod.map_reads(fasta, r1, r2, rrna_outdir, threads=threads, sample=sample)
-            pileup_calls = rrna_mod.pileup_at_positions(
-                bam, fasta, organism, min_af=min_af, min_depth=min_depth
-            )
+            pileup_calls = rrna_mod.pileup_at_positions(bam, fasta, organism, min_af=min_af, min_depth=min_depth)
             rrna_mod.write_pileup_tsv(pileup_calls, rrna_outdir / f"{sample}.23S_lzd_pileup.tsv")
             vcf = rrna_mod.call_full_vcf(bam, fasta, rrna_outdir, sample=sample, threads=threads)
-            n_res = sum(1 for c in pileup_calls if c.is_resistance)
-            click.echo(f"   {len(pileup_calls)} positions; {n_res} with resistance allele")
+            click.echo(f"   {len(pileup_calls)} positions; {sum(1 for c in pileup_calls if c.is_resistance)} with resistance allele")
 
-    # 4) JSON report
     report = report_mod.build_report(
         sample=sample, organism=organism, amr_hits=amr_hits,
         pileup_calls=pileup_calls, vcf_path=vcf, parameters=parameters,
@@ -225,7 +219,6 @@ def _run_single(
     report_mod.write_json(report, json_path)
     report_mod.write_text_summary(report, txt_path)
 
-    # 5) Per-sample CSV (wide + long)
     lzd_call = bool(report["summary"]["linezolid_resistance_call"])
     wide_row = summary_mod.build_wide_row(sample, organism, st, mlst_scheme, amr_hits, pileup_calls, lzd_call)
     long_rows = summary_mod.build_long_rows(sample, organism, st, mlst_scheme, amr_hits, pileup_calls)
@@ -233,15 +226,9 @@ def _run_single(
     summary_mod.write_long_csv(long_rows, outdir / f"{sample}.summary_long.csv")
 
     return {
-        "sample": sample,
-        "organism": organism,
-        "mlst_scheme": mlst_scheme,
-        "ST": st,
-        "linezolid_call": lzd_call,
-        "wide_row": wide_row,
-        "long_rows": long_rows,
-        "json": json_path,
-        "txt": txt_path,
+        "sample": sample, "organism": organism, "mlst_scheme": mlst_scheme, "ST": st,
+        "linezolid_call": lzd_call, "wide_row": wide_row, "long_rows": long_rows,
+        "json": json_path, "txt": txt_path,
     }
 
 
@@ -249,21 +236,16 @@ def _run_single(
 
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"], "max_content_width": 100},
-    help=(
-        f"linezolid-amr — integrated AMR profiling + 23S rRNA linezolid-resistance analysis.\n\n"
-        f"{ORGANISMS_HELP}\n\n"
-        f"Pipeline order: MLST (auto organism + ST) → AMRFinderPlus (assembly) → 23S read pileup."
-    ),
+    help=MAIN_DESCRIPTION,
 )
 @click.version_option(__version__, prog_name="linezolid-amr")
 def main() -> None:
     pass
 
 
-@main.command("list-organisms")
+@main.command("list-organisms", help="List organisms supported by the 23S + MLST steps.")
 def list_organisms_cmd() -> None:
-    """List organisms supported by the 23S step."""
-    for org in ref_mod.list_organisms():
+    for org in _SUPPORTED_ORGS:
         try:
             o = ref_mod.get_organism(org)
             click.echo(f"{org}\t{o.description}")
@@ -271,14 +253,15 @@ def list_organisms_cmd() -> None:
             click.echo(org)
 
 
-@main.command("fetch-references")
-@click.option("--organism", "-O", "organisms", multiple=True,
+@main.command("fetch-references",
+              help=f"Download per-species 23S references and build E. coli position maps. "
+                   f"{ORGANISMS_HELP}")
+@click.option("-O", "--organism", "organisms", multiple=True,
               help="Limit to one or more organisms (default: all supported).")
 @click.option("--api-key", envvar="NCBI_API_KEY", default=None,
               help="Optional NCBI E-utilities API key.")
 @click.option("--force", is_flag=True, help="Re-download even if cached.")
 def fetch_references_cmd(organisms, api_key, force):
-    """Download per-species 23S references and build E. coli position maps."""
     click.echo(f"Cache directory: {ref_mod.cache_dir()}")
     results = fetch_mod.fetch_all(
         organisms=list(organisms) if organisms else None,
@@ -295,10 +278,36 @@ def fetch_references_cmd(organisms, api_key, force):
         sys.exit(1)
 
 
-# Shared option set for run/folder
+@main.command("fetch-mlst-schemes",
+              help=f"Download/refresh PubMLST schemes for the supported organisms. "
+                   f"Schemes are bundled in the package by default — use this only if you "
+                   f"want fresher allele sets than the release tag carries. {ORGANISMS_HELP}")
+@click.option("-O", "--organism", "organisms", multiple=True,
+              help="Limit to specific organisms (default: all supported).")
+@click.option("--outdir", type=click.Path(path_type=Path), default=None,
+              help="Output dir (default: $LINEZOLID_AMR_MLST_DIR or ~/.local/share/linezolid-amr/mlst_schemes/).")
+@click.option("--force", is_flag=True, help="Re-download even if cached.")
+def fetch_mlst_cmd(organisms, outdir, force):
+    targets = list(organisms) if organisms else list(mlst_mod.PUBMLST_DBS)
+    click.echo(f"Fetching PubMLST schemes ({len(targets)} organism(s))...")
+    results = mlst_mod.fetch_pubmlst_schemes(organisms=targets, out_root=outdir, force=force)
+    failures = 0
+    for r in results:
+        if r.get("status") == "error":
+            failures += 1
+            click.echo(f"  [ERR ] {r['organism']}: {r.get('error')}", err=True)
+        elif r.get("status") == "fetched":
+            click.echo(f"  [FETCHED] {r['organism']} → {r['n_alleles']} alleles in {r['dir']}")
+        else:
+            click.echo(f"  [{r['status'].upper():>6}] {r['organism']}")
+    if failures:
+        sys.exit(1)
+
+
+# Shared option set
 def _shared_run_options(f):
     f = click.option("-O", "--organism", default=None,
-                     help="AMRFinderPlus organism. If omitted, inferred from MLST.")(f)
+                     help=f"AMRFinderPlus organism. If omitted, inferred via in-house MLST. {ORGANISMS_HELP}")(f)
     f = click.option("-t", "--threads", default=DEFAULT_THREADS, show_default=True, type=int,
                      help="Threads (default: all available CPUs).")(f)
     f = click.option("--min-af", default=rrna_mod.DEFAULT_MIN_AF, show_default=True, type=float,
@@ -306,13 +315,14 @@ def _shared_run_options(f):
     f = click.option("--min-depth", default=rrna_mod.DEFAULT_MIN_DEPTH, show_default=True, type=int,
                      help="Minimum read depth at a 23S position.")(f)
     f = click.option("--plus", is_flag=True, default=False,
-                     help="Pass AMRFinderPlus --plus (stress/biocide/heat/virulence search).")(f)
+                     help="Pass AMRFinderPlus --plus (stress/virulence/biocide search).")(f)
     f = click.option("--skip-amrfinder", is_flag=True, help="Skip AMRFinderPlus step.")(f)
     f = click.option("--skip-rrna23s", is_flag=True, help="Skip 23S analysis step.")(f)
     return f
 
 
-@main.command("run")
+@main.command("run",
+              help=f"Run the pipeline on a single sample.\n\n{ORGANISMS_HELP}")
 @click.option("-a", "--assembly", required=True, type=click.Path(exists=True, path_type=Path),
               help="Genome assembly FASTA.")
 @click.option("-1", "--r1", required=True, type=click.Path(exists=True, path_type=Path),
@@ -326,8 +336,7 @@ def _shared_run_options(f):
 @_shared_run_options
 def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_depth, plus,
             skip_amrfinder, skip_rrna23s):
-    """Run the pipeline on a single sample."""
-    click.echo(_BANNER)
+    _print_banner()
     sample = sample or assembly.stem
     res = _run_single(
         sample, assembly, r1, r2, organism, outdir, threads, min_af, min_depth, plus,
@@ -340,7 +349,10 @@ def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_dep
     click.echo(f"Linezolid resistance call: {'POSITIVE' if res['linezolid_call'] else 'negative'}")
 
 
-@main.command("folder")
+@main.command("folder",
+              help=f"Run the pipeline on every sample in a folder, emit a cohort summary.\n\n"
+                   f"Discovery: *.fasta/*.fa/*.fas/*.fna paired with FASTQs by basename "
+                   f"(R1/R2/_1/_2/_001 × .fastq[.gz]/.fq[.gz]).\n\n{ORGANISMS_HELP}")
 @click.option("-i", "--input", "input_dir", required=True,
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               help="Folder containing assemblies + paired FASTQs.")
@@ -349,12 +361,7 @@ def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_dep
 @_shared_run_options
 def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
                skip_amrfinder, skip_rrna23s):
-    """Run the pipeline on every sample in a folder. Final aggregated CSV.
-
-    Discovery: looks for *.fasta/*.fa/*.fas/*.fna, then pairs each with FASTQ files
-    sharing the same basename (R1/R2/_1/_2/_001 variants supported).
-    """
-    click.echo(_BANNER)
+    _print_banner()
     samples = discover_samples(input_dir)
     if not samples:
         raise click.ClickException(f"No assemblies (*.fasta/*.fa/*.fas/*.fna) found in {input_dir}")
@@ -366,8 +373,8 @@ def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
         click.echo(f"   ⚠ {s['sample']}: paired reads not found in {input_dir}", err=True)
 
     outdir.mkdir(parents=True, exist_ok=True)
-    all_wide_rows = []
-    all_long_rows = []
+    all_wide_rows: list[dict] = []
+    all_long_rows: list[dict] = []
     for s in valid:
         sample_dir = outdir / s["sample"]
         try:
@@ -381,7 +388,6 @@ def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
         except Exception as e:  # noqa: BLE001
             click.echo(f"   ✗ {s['sample']} failed: {e}", err=True)
 
-    # Final cohort-level summary
     summary_mod.write_wide_csv(all_wide_rows, outdir / "ALL_samples.summary_wide.csv")
     summary_mod.write_long_csv(all_long_rows, outdir / "ALL_samples.summary_long.csv")
 

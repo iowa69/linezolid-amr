@@ -25,11 +25,17 @@ One command runs **three** analyses and writes a combined report:
 
 | Step | Tool | What it gives you |
 |---|---|---|
-| 1️⃣ **MLST** | `mlst` (Seemann) | Sequence Type + organism auto-detection |
-| 2️⃣ **AMR profile** | NCBI AMRFinderPlus | All AMR/virulence/stress genes & point mutations |
-| 3️⃣ **23S heteroresistance** | minimap2 + pysam | Allele frequency at 11 canonical LZD positions |
+| 1️⃣ **MLST** | in-house, BLAST + bundled PubMLST schemes | Sequence Type + organism auto-detection (no external dep) |
+| 2️⃣ **AMR profile** | NCBI AMRFinderPlus | All AMR / virulence / stress genes & point mutations |
+| 3️⃣ **23S heteroresistance** | minimap2 + pysam + bcftools | Allele frequency at 11 canonical LZD positions |
 
-🧪 **Supported organisms** (23S step): *Staphylococcus aureus*, *Enterococcus faecalis*, *Enterococcus faecium*, *Streptococcus pneumoniae*. Linezolid resistance is reported in **E. coli K-12 23S numbering** (clinical convention) — translated automatically.
+🧪 **Supported organisms** (23S + MLST):
+- *Staphylococcus aureus*
+- *Enterococcus faecalis*
+- *Enterococcus faecium*
+- *Streptococcus pneumoniae*
+
+Linezolid resistance is reported in **E. coli K-12 23S numbering** (clinical convention) — translated automatically. Organisms outside the four above skip 23S + MLST and run AMRFinderPlus only (pass `-O / --organism`).
 
 🔬 **Why read-level?** *S. aureus* and *Enterococcus* spp. carry 4–6 copies of the 23S rRNA operon. A G2576T mutation in only a subset of copies produces heteroresistance that assembly-only callers miss. Reading allele frequencies straight off the reads is the only way to catch it.
 
@@ -45,15 +51,15 @@ conda activate linezolid-amr
 # or from source
 git clone https://github.com/iowa69/linezolid-amr && cd linezolid-amr
 conda create -n linezolid-amr -c bioconda -c conda-forge \
-    python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools mlst
+    python=3.11 ncbi-amrfinderplus minimap2 samtools bcftools blast
 conda activate linezolid-amr
 pip install -e .
 ```
 
-One-time downloads — **only the AMRFinder DB** (23S references ship inside the package and work offline):
+One-time downloads — **only the AMRFinder DB** (23S references and PubMLST schemes ship inside the package and work offline):
 ```bash
 amrfinder -u                                    # AMRFinder DB (~150 MB, one-time)
-# 23S references already bundled — nothing else to fetch
+# 23S references + MLST schemes already bundled — nothing else to fetch
 ```
 
 > 💾 **Bundled, immutable references.** Each release pins the exact NCBI-verified

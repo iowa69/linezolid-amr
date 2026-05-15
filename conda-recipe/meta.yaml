@@ -1,5 +1,5 @@
 {% set name = "linezolid-amr" %}
-{% set version = "0.1.3" %}
+{% set version = "0.1.4" %}
 
 package:
   name: {{ name|lower }}
@@ -32,13 +32,14 @@ requirements:
     - minimap2 >=2.24
     - samtools >=1.18
     - bcftools >=1.18
-    - mlst >=2.19
+    - blast >=2.12
 
 test:
   imports:
     - linezolid_amr
     - linezolid_amr.cli
     - linezolid_amr.amrfinder
+    - linezolid_amr.internal_mlst
     - linezolid_amr.mlst
     - linezolid_amr.rrna23s
     - linezolid_amr.references
@@ -53,17 +54,23 @@ about:
   license: MIT
   license_family: MIT
   license_file: LICENSE
-  summary: Integrated AMR profiling (AMRFinderPlus + MLST) + 23S rRNA linezolid-resistance frequency analysis
+  summary: Integrated AMR profiling + 23S rRNA linezolid heteroresistance + in-house MLST (S. aureus, E. faecalis, E. faecium, S. pneumoniae)
   description: |
-    linezolid-amr combines NCBI AMRFinderPlus gene/mutation detection on an
-    assembly with species-aware mapping of raw reads to 23S rRNA references to
-    detect heteroresistant linezolid-resistance mutations (e.g. G2576T, G2505A)
-    in Staphylococcus aureus, Enterococcus faecalis/faecium, and Streptococcus
-    pneumoniae. MLST (Seemann) runs first to infer the organism and ST. The
-    same organism drives both AMRFinderPlus species mode and 23S reference
-    selection. Mutations are reported in E. coli K-12 23S numbering (clinical
-    convention) via a pairwise-alignment-derived position map. Outputs
-    include a per-sample wide CSV (Kleborate-style) and a long CSV.
+    linezolid-amr combines NCBI AMRFinderPlus gene/mutation detection, an
+    in-house BLAST-based MLST caller (no external mlst dependency), and
+    species-aware read mapping to bundled 23S rRNA references to detect
+    heteroresistant linezolid-resistance mutations (e.g. G2576T, G2505A)
+    in Staphylococcus aureus, Enterococcus faecalis, Enterococcus faecium,
+    and Streptococcus pneumoniae. PubMLST schemes are shipped inside the
+    package so MLST works fully offline; per-organism 23S FASTA and
+    E. coli K-12 position maps are also bundled. MLST runs first and
+    infers the organism + Sequence Type; the same organism drives both
+    AMRFinderPlus species mode and 23S reference selection. Mutations are
+    reported in E. coli K-12 23S numbering (clinical literature convention).
+    Outputs include per-sample wide CSV (Kleborate-style), long CSV, sorted
+    indexed BAM, full 23S VCF, JSON report, and human-readable text summary.
+    A `folder` subcommand processes an entire input directory in a single
+    command and emits cohort-level aggregated CSVs.
   dev_url: https://github.com/iowa69/linezolid-amr
   doc_url: https://github.com/iowa69/linezolid-amr#readme
 

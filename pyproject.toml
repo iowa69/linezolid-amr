@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linezolid-amr"
-version = "0.1.3"
+version = "0.1.4"
 description = "Integrated AMR profiling and 23S rRNA linezolid-resistance frequency analysis from assembly + raw reads"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -43,4 +43,7 @@ linezolid_amr = [
     "data/references/bundled/*.fasta",
     "data/references/bundled/*.bed",
     "data/references/bundled/*.tsv",
+    "data/mlst_schemes/*/profiles.tsv",
+    "data/mlst_schemes/*/loci.txt",
+    "data/mlst_schemes/*/*.fasta.gz",
 ]
