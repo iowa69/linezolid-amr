@@ -56,9 +56,10 @@ USER_AGENT = "linezolid-amr/0.1 (github.com/iowa69/linezolid-amr)"
 
 PACKAGE_SCHEMES_RESOURCE = "linezolid_amr.data.mlst_schemes"
 
-# Match thresholds (matching tseemann's mlst behaviour)
-MIN_IDENTITY = 95.0   # %
-MIN_COVERAGE = 90.0   # %
+# Match thresholds — aligned 1:1 with tseemann/mlst defaults so calls are
+# directly comparable. See https://github.com/tseemann/mlst/blob/master/bin/mlst
+MIN_IDENTITY = 95.0   # --minid 95 (% DNA identity threshold)
+MIN_COVERAGE = 50.0   # --mincov 50 (% coverage threshold)
 EXACT_IDENTITY = 100.0
 EXACT_COVERAGE = 100.0
 
@@ -259,11 +260,12 @@ def _ensure_blast_db(allele_fasta_gz: Path, work: Path) -> Path:
     return db_prefix
 
 
-def _best_allele(assembly: Path, blast_db: Path, locus: str, threads: int) -> tuple[str | None, float, float]:
-    """Run blastn(assembly vs allele DB) and return (best_allele_id, identity, coverage_pct).
+def _best_allele(assembly: Path, blast_db: Path, locus: str, threads: int) -> list[tuple[str, float, float]]:
+    """Run blastn(assembly vs allele DB). Return all qualifying hits sorted best-first.
 
-    "allele_id" is the integer portion of the FASTA header (``arcC_3`` → ``3``).
-    Coverage is computed as ``alignment_length / subject_length * 100``.
+    Each hit is ``(allele_id, identity, coverage_pct)``.
+    BLAST options match tseemann/mlst defaults verbatim:
+      -ungapped -dust no -word_size 32 -evalue 1E-20 -perc_identity 95
     """
     cmd = [
         "blastn",
@@ -272,11 +274,14 @@ def _best_allele(assembly: Path, blast_db: Path, locus: str, threads: int) -> tu
         "-outfmt", "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore slen",
         "-perc_identity", str(MIN_IDENTITY),
         "-num_threads", str(threads),
-        "-max_target_seqs", "5",
+        "-ungapped",
+        "-dust", "no",
+        "-word_size", "32",
+        "-evalue", "1E-20",
+        "-max_target_seqs", "100000",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    best = None  # (allele_id, identity, coverage)
-    best_score = (-1.0, -1.0)  # rank by (coverage, identity)
+    hits: list[tuple[str, float, float]] = []
     for line in proc.stdout.splitlines():
         parts = line.split("\t")
         if len(parts) < 13:
@@ -288,13 +293,34 @@ def _best_allele(assembly: Path, blast_db: Path, locus: str, threads: int) -> tu
         coverage = aln_len / slen * 100 if slen else 0.0
         if coverage < MIN_COVERAGE:
             continue
-        # Allele id = digits after the locus prefix; PubMLST formatting is "locus_<int>"
         allele_id = sseqid.split("_")[-1]
-        score = (coverage, pident)
-        if score > best_score:
-            best_score = score
-            best = (allele_id, pident, coverage)
-    return best if best else (None, 0.0, 0.0)
+        hits.append((allele_id, pident, coverage))
+    # Sort best-first by (coverage desc, identity desc, allele number asc)
+    hits.sort(key=lambda h: (-h[2], -h[1], int(h[0]) if h[0].isdigit() else 10**9))
+    return hits
+
+
+def _annotate_allele(hits: list[tuple[str, float, float]]) -> str:
+    """Map BLAST hits to tseemann/mlst-style locus notation.
+
+    - ``n``         : a single perfect (100% id + 100% cov) match
+    - ``n,m``       : two or more perfect matches at different allele numbers
+    - ``n?``        : single full-identity but partial-coverage hit
+    - ``~n``        : best near-perfect (≥95% id, ≥50% cov) but not perfect
+    - ``-``         : no qualifying hit
+    """
+    if not hits:
+        return "-"
+    perfects = [h for h in hits if h[1] >= EXACT_IDENTITY and h[2] >= EXACT_COVERAGE]
+    if perfects:
+        uniq = sorted({h[0] for h in perfects}, key=lambda x: int(x) if x.isdigit() else 10**9)
+        return ",".join(uniq) if len(uniq) > 1 else uniq[0]
+    # full identity but partial coverage → "n?"
+    partial_cov = [h for h in hits if h[1] >= EXACT_IDENTITY]
+    if partial_cov:
+        return f"{partial_cov[0][0]}?"
+    # near-perfect (identity 95-100 OR coverage 50-100) → "~n"
+    return f"~{hits[0][0]}"
 
 
 def _load_profiles(scheme_path: Path) -> tuple[list[str], dict[tuple[str, ...], str]]:
@@ -344,22 +370,36 @@ def run_internal_mlst(assembly: Path, organism: str, threads: int = 4) -> MlstRe
                 alleles_found[locus] = "-"
                 continue
             blast_db = _ensure_blast_db(allele_fasta_gz, work)
-            allele_id, pident, cov = _best_allele(assembly, blast_db, locus, threads)
-            if allele_id is None:
-                alleles_found[locus] = "-"
-            elif pident < EXACT_IDENTITY or cov < EXACT_COVERAGE:
-                # Partial match: prefix with "~" like tseemann's mlst
-                alleles_found[locus] = f"~{allele_id}"
-            else:
-                alleles_found[locus] = allele_id
+            hits = _best_allele(assembly, blast_db, locus, threads)
+            alleles_found[locus] = _annotate_allele(hits)
 
     tup = tuple(alleles_found[l] for l in locus_order)
-    # If any allele is partial (~) or missing (-), no exact ST
-    exact_tup = tup if all(a.isdigit() for a in tup) else None
-    st = profiles.get(exact_tup, "-") if exact_tup else "-"
+    st, st_note = _assign_st(tup, locus_order, profiles)
 
     raw = "\t".join([str(assembly), scheme_name, st] + [f"{l}({alleles_found[l]})" for l in locus_order])
-    return MlstResult(file=str(assembly), scheme=scheme_name, st=st, alleles=alleles_found, raw=raw)
+    return MlstResult(
+        file=str(assembly),
+        scheme=scheme_name,
+        st=st,
+        alleles=alleles_found,
+        raw=raw,
+    )
+
+
+def _assign_st(
+    tup: tuple[str, ...],
+    locus_order: list[str],
+    profiles: dict[tuple[str, ...], str],
+) -> tuple[str, str]:
+    """Decide the ST given the per-locus call tuple.
+
+    Matches tseemann/mlst behaviour exactly: an exact integer-tuple lookup in
+    the PubMLST profile table. Any partial match (~), ambiguous call (?),
+    missing locus (-) or absent profile → ``-`` (novel / unknown).
+    """
+    if all(a.isdigit() for a in tup) and tup in profiles:
+        return profiles[tup], ""
+    return "-", ""
 
 
 def infer_organism(assembly: Path, threads: int = 4) -> tuple[str, MlstResult]:

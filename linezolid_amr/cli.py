@@ -125,20 +125,29 @@ def discover_samples(folder: Path) -> list[dict]:
 
 # ---------------- shared pipeline ---------------- #
 
+def _fmt_alleles(res) -> str:
+    """Seemann-style allele string ``arcC(3)|aroE(35)|...`` ordered by scheme loci."""
+    if res is None:
+        return ""
+    return "|".join(f"{l}({res.alleles[l]})" for l in res.alleles)
+
+
 def _resolve_organism(
     user_organism: str | None,
     assembly: Path,
     threads: int,
-) -> tuple[str | None, str | None, str | None]:
-    """Return (organism, mlst_scheme, st). In-house MLST infers organism."""
+) -> tuple[str | None, str | None, str | None, str]:
+    """Return (organism, mlst_scheme, st, mlst_alleles_string). In-house MLST infers organism."""
     mlst_scheme = None
     st = None
     mlst_organism = None
+    mlst_alleles = ""
 
     if mlst_mod.blastn_available() and mlst_mod.all_schemes_available():
         try:
             mlst_organism, res = mlst_mod.infer_organism(assembly, threads=threads)
             mlst_scheme, st = res.scheme, res.st
+            mlst_alleles = _fmt_alleles(res)
         except mlst_mod.MlstNoMatch as e:
             if not user_organism:
                 raise click.ClickException(str(e))
@@ -162,7 +171,7 @@ def _resolve_organism(
             f"   ⚠ MLST suggests {mlst_organism} but --organism is {user_organism}. Using --organism.",
             err=True,
         )
-    return organism, mlst_scheme, st
+    return organism, mlst_scheme, st, mlst_alleles
 
 
 def _run_single(
@@ -175,8 +184,10 @@ def _run_single(
     click.echo(f"\n=== {sample} ===")
 
     click.echo(">> MLST / organism inference...")
-    organism, mlst_scheme, st = _resolve_organism(user_organism, assembly, threads)
+    organism, mlst_scheme, st, mlst_alleles = _resolve_organism(user_organism, assembly, threads)
     click.echo(f"   organism: {organism}   MLST scheme: {mlst_scheme or '-'}   ST: {st or '-'}")
+    if mlst_alleles:
+        click.echo(f"   alleles: {mlst_alleles}")
 
     parameters = {
         "sample": sample, "assembly": str(assembly),
@@ -220,7 +231,10 @@ def _run_single(
     report_mod.write_text_summary(report, txt_path)
 
     lzd_call = bool(report["summary"]["linezolid_resistance_call"])
-    wide_row = summary_mod.build_wide_row(sample, organism, st, mlst_scheme, amr_hits, pileup_calls, lzd_call)
+    wide_row = summary_mod.build_wide_row(
+        sample, organism, st, mlst_scheme, mlst_alleles,
+        amr_hits, pileup_calls, lzd_call,
+    )
     long_rows = summary_mod.build_long_rows(sample, organism, st, mlst_scheme, amr_hits, pileup_calls)
     summary_mod.write_wide_csv([wide_row], outdir / f"{sample}.summary_wide.csv")
     summary_mod.write_long_csv(long_rows, outdir / f"{sample}.summary_long.csv")

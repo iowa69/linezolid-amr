@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linezolid-amr"
-version = "0.1.4"
+version = "0.1.5"
 description = "Integrated AMR profiling and 23S rRNA linezolid-resistance frequency analysis from assembly + raw reads"
 readme = "README.md"
 license = { file = "LICENSE" }

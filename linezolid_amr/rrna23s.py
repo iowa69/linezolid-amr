@@ -21,11 +21,12 @@ from linezolid_amr.references import (
 )
 
 
-# Allele frequency below which we consider the position effectively wild type.
-# Linezolid heteroresistance literature commonly uses 1-3% as the lower bound
-# because (a) Illumina error around 0.5-1% per position, and (b) most rRNA
-# operon copies must remain wild type for fitness.
-DEFAULT_MIN_AF = 0.01
+# Minimum allele frequency required to call a positive linezolid resistance.
+# Set to 15 % so that for the worst-case organism (S. aureus, 5 rrn operons)
+# a mutation must be present in roughly one full operon copy (1/5 = 20 %)
+# before we flag the sample. Lower observations are still reported in the
+# output (with their AF) but do NOT trigger a POS call.
+DEFAULT_MIN_AF = 0.15
 DEFAULT_MIN_DEPTH = 20
 
 
@@ -192,6 +193,7 @@ def pileup_at_positions(
         ecoli_pos = sp_to_ecoli.get(species_pos_1b, -1)
         alt_alleles = []
         total_non_n = sum(counts[b] for b in "ACGT")
+        resistance_upper = [r.upper() for r in resistance_bases]
         for base in "ACGT":
             if base == ref_base.upper():
                 continue
@@ -199,18 +201,28 @@ def pileup_at_positions(
             if c == 0:
                 continue
             af = c / total_non_n if total_non_n else 0.0
-            if af < min_af and depth >= min_depth:
+            is_known_resistance = base in resistance_upper
+            # Filter: drop unrelated noise alts below min_af. ALWAYS keep
+            # known-resistance alleles regardless of AF so the user sees the
+            # proportion even when sub-threshold (sequencing noise vs. real
+            # heteroresistance is a judgement call we leave to the reader).
+            if not is_known_resistance and af < min_af and depth >= min_depth:
                 continue
             alt_alleles.append(
                 {
                     "base": base,
                     "count": c,
                     "af": af,
-                    "resistance": base in [r.upper() for r in resistance_bases],
+                    "resistance": is_known_resistance,
+                    "passes_threshold": af >= min_af and depth >= min_depth,
                 }
             )
 
-        is_resistance = any(a["resistance"] and depth >= min_depth for a in alt_alleles)
+        # Positive LZD call requires a resistance allele AT OR ABOVE min_af
+        is_resistance = any(
+            a["resistance"] and a["passes_threshold"]
+            for a in alt_alleles
+        )
         calls.append(
             PileupCall(
                 organism=organism,
