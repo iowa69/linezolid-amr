@@ -30,7 +30,7 @@
 
 Linezolid resistance in Gram-positive pathogens is most often **heteroresistant**: the resistance-conferring 23S rRNA mutation (most commonly G2576T) is carried by only a subset of the multiple rRNA operons present in the genome. Because the resistant allele is a minority, the assembly consensus base remains wild type and every assembly-only AMR caller — including state-of-the-art tools — fails to flag the strain. **linezolid-amr** addresses this gap by chaining three analyses driven by a single organism call:
 
-1. **Multi-locus sequence typing (MLST)** — in-house Python implementation backed by bundled PubMLST schemes (Jolley et al., 2018). Aligned 1:1 to `tseemann/mlst` thresholds and BLAST options; cross-validated locus-by-locus on real cohorts.
+1. **Multi-locus sequence typing (MLST)** — in-house BLAST-based Python implementation backed by bundled PubMLST schemes (Jolley et al., 2018). Cross-validated locus-by-locus on real cohorts.
 2. **Acquired AMR / virulence / stress profiling** — NCBI AMRFinderPlus (Feldgarden et al., 2021) with optional `--plus` extension.
 3. **23S rRNA heteroresistance detection** — minimap2 short-read alignment to a species-specific 23S reference followed by per-position allele-frequency profiling at the 11 canonical linezolid-resistance positions in *E. coli* K-12 numbering (Kloss et al., 1999; Long & Vester, 2012).
 
@@ -40,23 +40,17 @@ All canonical resistance positions carry verified PubMed citations and the pipel
 
 ```mermaid
 flowchart LR
-    A[Assembly FASTA] --> M{In-house MLST<br/>blastn + PubMLST}
-    M -->|organism + ST| O[AMRFinderPlus<br/>--organism, --plus]
-    A --> O
-    R1[Paired FASTQ] --> X[minimap2<br/>-ax sr]
-    R2[Paired FASTQ] --> X
-    O --> O1[acquired AMR / virulence / stress]
-    M --> Mref[species 23S reference<br/>bundled]
-    Mref --> X
-    X --> P[pysam pileup at<br/>11 canonical LZD positions]
+    A[Assembly FASTA] --> M[In-house MLST<br/>blastn vs PubMLST]
+    A --> O[AMRFinderPlus<br/>+ optional --plus]
+    R[Paired FASTQ R1 R2] --> X[minimap2 -ax sr<br/>vs species 23S]
+    M -->|organism + ST| O
+    M -->|species 23S| X
+    O --> O1[AMR / virulence / stress hits]
+    X --> P[pysam pileup<br/>11 canonical LZD sites]
     X --> V[bcftools VCF<br/>ploidy 1]
-    O1 --> S[Wide + long CSV<br/>JSON + plain-text report]
+    O1 --> S[Wide CSV + Long CSV<br/>JSON + text report]
     P --> S
     V --> S
-    classDef in fill:#eef,stroke:#557,stroke-width:1px
-    classDef out fill:#efe,stroke:#575,stroke-width:1px
-    class A,R1,R2 in
-    class S,O1 out
 ```
 
 ## Supported organisms
@@ -123,7 +117,7 @@ Auto-pairs `*.fasta / *.fa / *.fas / *.fna` with FASTQ siblings. Recognised read
 | `-i, --input` | — | Input directory (folder mode) |
 | `-o, --outdir` | — | Output directory (required) |
 | `-s, --sample` | assembly stem | Sample name |
-| `-O, --organism` | auto via MLST | Override organism call |
+| `-O, --organism` | auto via MLST | Override organism call. Accepted values (must match exactly, underscore-separated): `Staphylococcus_aureus`, `Enterococcus_faecalis`, `Enterococcus_faecium`, `Streptococcus_pneumoniae`. Any other AMRFinderPlus organism name (e.g. `Klebsiella_pneumoniae`) is allowed too — the 23S step is skipped in that case. |
 | `-t, --threads` | all available CPUs | Parallel threads |
 | `--plus` | off | Pass AMRFinderPlus `--plus` (stress / virulence / biocide) |
 | `--min-af` | **0.15** | Minimum 23S alt-allele frequency for a positive call |
