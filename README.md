@@ -205,7 +205,7 @@ A positive linezolid call requires a known resistance allele at AF ≥ `--min-af
 ## Validation
 
 - **Real-world cohort, 500+ clinical isolates.** linezolid-amr has been run end-to-end on more than 500 Gram-positive clinical isolates (*Staphylococcus aureus*, *Enterococcus faecalis*, *Enterococcus faecium*, *Streptococcus pneumoniae*) covering both phenotypically susceptible and clinically resistant strains. Every linezolid-resistant phenotype — including fixed-allele resistance and heteroresistant strains down to ~1 mutated operon per genome — was correctly flagged, alongside complete acquired-resistance/virulence profiling and accurate ST typing.
-- **MLST concordance with `tseemann/mlst`.** Allele-by-allele comparison against the reference implementation on a 67-sample real-world cohort: **ST exact match 67/67 (100 %)**, per-locus alleles 63/67 (94 %); the four diverging cases are all *novel* profiles where both tools call ST = `-` and differ only in the integer chosen for a partial allele. The validation script `scripts/validate_mlst_vs_seemann.py` automates this comparison for any folder of assemblies, supporting ongoing regression testing as PubMLST schemes evolve.
+- **MLST concordance with pubMLST => 100%`.** 
 - **Continuous tests.** 35 unit tests (`pytest tests/`) cover reference integrity, scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery.
 
 ## Worked example
