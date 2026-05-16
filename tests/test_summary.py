@@ -19,7 +19,7 @@ def _h(symbol, klass, et="AMR", cov=100.0, ident=99.5):
     )
 
 
-def _p(ecoli_pos, ref, alt_base, alt_af, depth, drug="linezolid"):
+def _p(ecoli_pos, ref, alt_base, alt_af, depth, drug="linezolid", passes=True):
     return PileupCall(
         organism="Enterococcus_faecium",
         ref_contig="Enterococcus_faecium_23S",
@@ -28,79 +28,71 @@ def _p(ecoli_pos, ref, alt_base, alt_af, depth, drug="linezolid"):
         ref_base=ref, depth=depth,
         counts={"A": 0, "C": 0, "G": int(depth * (1 - alt_af)), "T": int(depth * alt_af),
                 "N": 0, "DEL": 0},
-        alt_alleles=[{"base": alt_base, "count": int(depth * alt_af), "af": alt_af, "resistance": True}],
-        is_resistance=True, drug=drug,
+        alt_alleles=[{"base": alt_base, "count": int(depth * alt_af),
+                       "af": alt_af, "resistance": True, "passes_threshold": passes}],
+        is_resistance=passes, drug=drug,
     )
 
 
-def test_wide_row_columns_match_new_format():
+def test_wide_row_bare_gene_names():
     amr = [_h("cfr(D)", "OXAZOLIDINONE"), _h("vanA", "GLYCOPEPTIDE"),
            _h("23S_G2576T", "OXAZOLIDINONE")]
-    pile = [_p(2576, "G", "T", 0.66, 173)]
-    row = summary_mod.build_wide_row("S1", "Enterococcus_faecium", "17", "efaecium",
-                                       "atpA(9)|ddl(1)|gdh(1)|purK(1)|gyd(12)|pstS(1)|adk(1)",
-                                       amr, pile, True)
+    pile = [_p(2576, "G", "T", 0.66, 173, passes=True)]
+    row = summary_mod.build_wide_row(
+        "S1", "Enterococcus_faecium", "17", "efaecium",
+        "atpA(9)|ddl(1)|gdh(1)|purK(1)|gyd(12)|pstS(1)|adk(1)",
+        amr, pile, True,
+    )
     assert row["linezolid_call"] == "POS"
     assert row["ST"] == "17"
-    assert "atpA(9)" in row["mlst_alleles"]
-    assert int(row["lzd_n_23S_mutations"]) == 1
-    assert float(row["lzd_max_23S_af"]) > 0.6
-    # Linezolid genes pooled under LZD__
-    assert "LZD__cfr(D)" in row
-    assert "LZD__23S_G2576T" in row
-    # 23S pileup mutation gets its own column with AF
-    assert "LZD_23S_AF__G2576T" in row
-    # Glycopeptide stays in its AMR class bucket
-    assert any(k.startswith("AMR_GLYCOPEPTIDE__") for k in row)
+    # Bare gene names — no LZD__ / AMR_ / VIRULENCE__ prefixes
+    assert "cfr(D)" in row
+    assert "23S_G2576T" in row
+    assert "vanA" in row
+    assert not any(k.startswith("LZD__") or k.startswith("AMR_") or k.startswith("VIRULENCE__") for k in row)
+    # 23S pileup mutation present (also bare)
+    assert "G2576T" in row
+    assert float(row["G2576T"]) > 0.6
 
 
-def test_wide_neg_call():
-    row = summary_mod.build_wide_row("S2", "Staphylococcus_aureus", "5", "saureus",
-                                      "arcC(1)|aroE(1)|glpF(1)|gmk(1)|pta(1)|tpi(1)|yqiL(1)",
-                                      [_h("blaZ", "BETA-LACTAM")], [], False)
+def test_wide_subthreshold_pileup_dropped():
+    """Resistance alleles below --min-af must NOT appear as columns in the wide CSV."""
+    pile = [_p(2576, "G", "T", 0.02, 200, passes=False)]  # 2% AF, below 15%
+    row = summary_mod.build_wide_row(
+        "S2", "Staphylococcus_aureus", "5", "saureus",
+        "arcC(1)|aroE(1)|glpF(1)|gmk(1)|pta(1)|tpi(1)|yqiL(1)",
+        [_h("blaZ", "BETA-LACTAM")], pile, False,
+    )
     assert row["linezolid_call"] == "neg"
-    assert row["lzd_n_23S_mutations"] == "0"
+    assert "G2576T" not in row
     assert row["lzd_max_23S_af"] == ""
-    # No LZD columns when none detected
-    assert not any(k.startswith("LZD__") for k in row)
-    assert not any(k.startswith("LZD_23S_AF__") for k in row)
-    # blaZ ends up in AMR_BETA-LACTAM
-    assert any(k.startswith("AMR_BETA-LACTAM__") for k in row)
+    # AMR gene present (bare)
+    assert "blaZ" in row
 
 
-def test_long_rows_include_both():
-    amr = [_h("cfr(D)", "OXAZOLIDINONE"), _h("vanA", "GLYCOPEPTIDE")]
-    pile = [_p(2576, "G", "T", 0.66, 173)]
-    rows = summary_mod.build_long_rows("S1", "Enterococcus_faecium", "17", "efaecium", amr, pile)
-    kinds = {r["feature_kind"] for r in rows}
-    assert "23S_LZD_mutation" in kinds
-    # AmrHit is captured by its element_type, "AMR"
-    assert "AMR" in kinds
-    features = {r["feature"] for r in rows}
-    assert "G2576T" in features
-    assert "cfr(D)" in features
-    assert "vanA" in features
+def test_long_csv_keeps_sub_threshold():
+    """Long CSV must keep sub-threshold AFs for transparency."""
+    pile = [_p(2576, "G", "T", 0.02, 200, passes=False)]
+    rows = summary_mod.build_long_rows("S2", "Staphylococcus_aureus", "5", "saureus",
+                                        [], pile)
+    assert any(r["feature"] == "G2576T" and r["passes_threshold"] == "NO" for r in rows)
 
 
 def test_csv_writers_roundtrip(tmp_path: Path):
     amr = [_h("cfr(D)", "OXAZOLIDINONE")]
-    pile = [_p(2576, "G", "T", 0.66, 173)]
+    pile = [_p(2576, "G", "T", 0.66, 173, passes=True)]
     wide = summary_mod.build_wide_row("S1", "Enterococcus_faecium", "17", "efaecium",
                                        "atpA(9)|ddl(1)|gdh(1)|purK(1)|gyd(12)|pstS(1)|adk(1)",
                                        amr, pile, True)
     long = summary_mod.build_long_rows("S1", "Enterococcus_faecium", "17", "efaecium", amr, pile)
     summary_mod.write_wide_csv([wide], tmp_path / "wide.csv")
     summary_mod.write_long_csv(long, tmp_path / "long.csv")
-    text_wide = (tmp_path / "wide.csv").read_text()
-    text_long = (tmp_path / "long.csv").read_text()
-    # Wide CSV: identity prefix + LZD column + 23S AF column all present
-    header_wide = text_wide.splitlines()[0]
+    header_wide = (tmp_path / "wide.csv").read_text().splitlines()[0]
     assert "linezolid_call" in header_wide
     assert "mlst_alleles" in header_wide
-    assert "LZD__cfr(D)" in header_wide
-    assert "LZD_23S_AF__G2576T" in header_wide
-    # Cells
-    assert "POS" in text_wide
-    # Long CSV unchanged
+    assert "cfr(D)" in header_wide
+    assert "G2576T" in header_wide
+    assert "LZD__" not in header_wide  # no prefix
+    text_long = (tmp_path / "long.csv").read_text()
     assert "feature_kind" in text_long.splitlines()[0]
     assert "G2576T" in text_long

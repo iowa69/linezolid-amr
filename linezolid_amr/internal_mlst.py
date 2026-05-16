@@ -393,12 +393,26 @@ def _assign_st(
 ) -> tuple[str, str]:
     """Decide the ST given the per-locus call tuple.
 
-    Matches tseemann/mlst behaviour exactly: an exact integer-tuple lookup in
-    the PubMLST profile table. Any partial match (~), ambiguous call (?),
-    missing locus (-) or absent profile → ``-`` (novel / unknown).
+    Exact integer-tuple lookup in the PubMLST profile table, with one extra
+    rule that ``mlst`` (Seemann) does NOT implement: PubMLST encodes a
+    genuinely-deleted locus as allele ``0`` in the profile table (e.g.
+    *E. faecium* ST1478 has ``pstS=0``). Our locus caller emits ``-`` when no
+    BLAST hit clears threshold — which is the read-level expectation of a
+    deleted gene. We therefore retry the lookup with ``-`` substituted by
+    ``0`` so null-allele STs like 1478/1421/1422/... get assigned correctly.
+
+    Partial matches (~n), ambiguous calls (n?) still yield ``-``.
     """
+    # First pass: strict exact match (no missing loci).
     if all(a.isdigit() for a in tup) and tup in profiles:
         return profiles[tup], ""
+    # Second pass: allow '-' (missing locus) to match PubMLST null-allele '0'.
+    # Only kicks in if every non-missing locus is a clean integer; otherwise we
+    # would risk mapping noise into a real ST.
+    if all(a.isdigit() or a == "-" for a in tup) and any(a == "-" for a in tup):
+        normalized = tuple("0" if a == "-" else a for a in tup)
+        if normalized in profiles:
+            return profiles[normalized], ""
     return "-", ""
 
 

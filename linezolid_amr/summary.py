@@ -1,83 +1,61 @@
 """Stats-friendly CSV summaries.
 
-We emit two CSV files per sample (and aggregated for ``folder`` mode):
-
-* ``<sample>.summary_wide.csv`` — **one row per sample**, where every detected
-  gene / mutation gets **its own column**. Column names are prefixed by group:
-
-  ============================================  ============================
-  Column                                        Meaning
-  ============================================  ============================
-  ``sample, organism, mlst_scheme, ST,``        Identity & MLST
-  ``mlst_alleles, linezolid_call,``
-  ``lzd_n_23S_mutations, lzd_max_23S_af``
-  ``LZD__<gene_or_mutation>``                   Linezolid-relevant hit;
-                                                value = identity (%)
-  ``LZD_23S_AF__<ecoli_pos>``                   23S pileup AF at LZD site;
-                                                value = AF in [0,1]
-  ``AMR_<CLASS>__<gene>``                       AMR hit; value = identity (%)
-  ``VIRULENCE__<gene>``                         Virulence hit; value = id (%)
-  ``STRESS_<CLASS>__<gene>``                    Stress hit; value = id (%)
-  ============================================  ============================
-
-  Folder mode (``ALL_samples.summary_wide.csv``) takes the union of every
-  detected column across the cohort so users get a clean sample × gene matrix
-  ready for pandas / R / Excel pivot tables.
-
-* ``<sample>.summary_long.csv`` — long format, one row per detected feature.
+Wide CSV: one row per sample, one column per detected gene/mutation. Column
+names are the bare gene symbol (e.g. ``blaZ``, ``cfr(D)``, ``23S_G2576T``).
+Linezolid 23S read-level mutations are reported only when AF ≥ ``--min-af``
+(default 0.15); the AF cell holds the raw fraction. The long CSV keeps the
+full per-feature view including sub-threshold AFs for transparency.
 """
 
 from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Iterable
 
-from linezolid_amr.amrfinder import AmrHit, LINEZOLID_GENE_KEYWORDS, LINEZOLID_PROTEIN_KEYWORDS
+from linezolid_amr.amrfinder import AmrHit
 from linezolid_amr.rrna23s import PileupCall
 
 
-# -------------------------- column grouping helpers --------------------------
-
-def _is_linezolid_relevant(h: AmrHit) -> bool:
-    return h.is_linezolid_relevant
-
+# -------------------------- helpers --------------------------
 
 def _amr_column(h: AmrHit) -> str:
-    """Return the ``<group>__<gene>`` column name for an AMRFinderPlus hit."""
-    gene = h.gene_symbol or h.sequence_name or "unknown"
-    cls = (h.class_ or "OTHER").upper().replace(" ", "_").replace("/", "_")
-    et = (h.element_type or "AMR").upper()
-    if _is_linezolid_relevant(h):
-        # Pool every linezolid-relevant hit (cfr, optrA, poxtA, 23S_*, L3/L4/L22, …)
-        # into a single LZD group so the linezolid block in the header is compact.
-        return f"LZD__{gene}"
-    if et == "VIRULENCE":
-        return f"VIRULENCE__{gene}"
-    if et == "STRESS":
-        return f"STRESS_{cls}__{gene}"
-    return f"AMR_{cls}__{gene}"
+    """Wide-CSV column = the bare gene symbol. Class/element type are not
+    encoded into the header (the AMRFinderPlus TSV carries that detail)."""
+    return h.gene_symbol or h.sequence_name or "unknown"
 
 
-def _pileup_resistance_alts(p: PileupCall) -> list[tuple[str, float]]:
-    """All (mutation_name, AF) pairs for resistance-known alts at this position,
-    regardless of threshold (always-report-the-proportion policy).
-    """
-    out = []
-    for a in p.alt_alleles:
-        if not a["resistance"]:
-            continue
-        mut = f"{p.ref_base}{p.ecoli_position}{a['base']}"
-        out.append((mut, a["af"]))
-    return out
+def _passing_resistance_alts(p: PileupCall) -> list[tuple[str, float]]:
+    """Only resistance-base alts that cleared the threshold get into the wide CSV."""
+    return [
+        (f"{p.ref_base}{p.ecoli_position}{a['base']}", a["af"])
+        for a in p.alt_alleles
+        if a["resistance"] and a.get("passes_threshold")
+    ]
+
+
+def _all_resistance_alts(p: PileupCall) -> list[tuple[str, float]]:
+    """Every observed resistance-base alt (long CSV uses this — transparency)."""
+    return [
+        (f"{p.ref_base}{p.ecoli_position}{a['base']}", a["af"])
+        for a in p.alt_alleles
+        if a["resistance"]
+    ]
 
 
 def _amr_value(h: AmrHit) -> str:
-    """Cell value for an AMRFinderPlus hit — identity % formatted to 1 decimal."""
     return f"{h.identity_pct:.1f}"
 
 
-# ---------------------------- main builders ----------------------------
+# Linezolid-relevant column ordering: cfr/optrA/poxtA/23S/L3/L4/L22 hits come
+# first among the gene columns, then the actual LZD pileup mutations, then
+# everything else alphabetical.
+def _column_rank(col: str, lzd_amr_cols: set[str], lzd_pileup_cols: set[str]) -> tuple[int, str]:
+    if col in lzd_amr_cols:
+        return (0, col.lower())
+    if col in lzd_pileup_cols:
+        return (1, col.lower())
+    return (2, col.lower())
+
 
 # Fixed leading columns — always present in this order.
 _LEADING = (
@@ -85,6 +63,8 @@ _LEADING = (
     "linezolid_call", "lzd_n_23S_mutations", "lzd_max_23S_af",
 )
 
+
+# -------------------------- builders --------------------------
 
 def build_wide_row(
     sample: str,
@@ -98,16 +78,13 @@ def build_wide_row(
 ) -> dict[str, str]:
     """Build the wide-CSV row for a single sample.
 
-    Linezolid policy: ``linezolid_call=POS`` iff any resistance allele is at
-    or above the min-AF threshold; *but* every observed resistance allele
-    (even sub-threshold) gets its own ``LZD_23S_AF__<mutation>`` column with
-    the raw AF so the reader can judge borderline cases.
+    Wide-CSV policy: only 23S resistance alleles AT OR ABOVE the threshold
+    appear as columns. Sub-threshold AFs are still visible in the long CSV
+    and the per-sample pileup TSV.
     """
     n_pos_positions = sum(1 for p in pileup_calls if p.is_resistance)
-    # Max AF over ALL observed resistance alleles (above-threshold or not),
-    # because the user explicitly asked to "always show the proportion".
-    all_res_afs = [af for p in pileup_calls for _, af in _pileup_resistance_alts(p)]
-    max_af = max(all_res_afs, default=0.0)
+    passing_afs = [af for p in pileup_calls for _, af in _passing_resistance_alts(p)]
+    max_af = max(passing_afs, default=0.0)
     row: dict[str, str] = {
         "sample": sample,
         "organism": organism or "",
@@ -118,17 +95,17 @@ def build_wide_row(
         "lzd_n_23S_mutations": str(n_pos_positions),
         "lzd_max_23S_af": f"{max_af:.4f}" if max_af else "",
     }
-    # AMRFinderPlus → one column per gene
+    # AMRFinderPlus → one column per gene (bare gene name)
     for h in amr_hits:
         col = _amr_column(h)
-        prev = row.get(col)
         new_val = _amr_value(h)
+        prev = row.get(col)
         if prev is None or float(new_val) > float(prev):
             row[col] = new_val
-    # 23S pileup → one column per observed resistance allele (always reported)
+    # 23S pileup → only above-threshold mutations
     for p in pileup_calls:
-        for mut, af in _pileup_resistance_alts(p):
-            col = f"LZD_23S_AF__{mut}"
+        for mut, af in _passing_resistance_alts(p):
+            col = mut
             prev_af = float(row[col]) if col in row else -1.0
             if af > prev_af:
                 row[col] = f"{af:.4f}"
@@ -143,12 +120,9 @@ def build_long_rows(
     amr_hits: list[AmrHit],
     pileup_calls: list[PileupCall],
 ) -> list[dict[str, str]]:
-    """Long-format rows: one per detected feature."""
+    """Long-format rows: one per detected feature (sub-threshold AFs included)."""
     base = {"sample": sample, "organism": organism, "mlst_scheme": mlst_scheme or "", "ST": st or ""}
     out: list[dict[str, str]] = []
-    # Emit every resistance-base alt seen at any canonical LZD position, even if
-    # below the AF threshold (always-show-the-proportion). Threshold passage is
-    # captured by the `passes_threshold` column so users can filter trivially.
     for p in pileup_calls:
         for a in p.alt_alleles:
             if not a["resistance"]:
@@ -186,38 +160,34 @@ def build_long_rows(
     return out
 
 
-# ---------------------------- writers ----------------------------
-
-def _group_rank(col: str) -> tuple[int, str, str]:
-    """Sort key that keeps groups together and orderly.
-
-    Order: LZD → LZD_23S_AF → AMR_* (alphabetised by class) → VIRULENCE → STRESS_*.
-    Within each group, genes are sorted alphabetically.
-    """
-    if "__" not in col:
-        return (-1, col, "")
-    prefix, gene = col.split("__", 1)
-    bucket_order = [
-        "LZD",
-        "LZD_23S_AF",
-    ]
-    if prefix in bucket_order:
-        return (bucket_order.index(prefix), prefix, gene.lower())
-    if prefix.startswith("AMR_"):
-        return (10, prefix, gene.lower())
-    if prefix == "VIRULENCE":
-        return (20, prefix, gene.lower())
-    if prefix.startswith("STRESS_"):
-        return (30, prefix, gene.lower())
-    return (40, prefix, gene.lower())
-
+# -------------------------- writers --------------------------
 
 def write_wide_csv(rows: list[dict[str, str]], path: Path) -> None:
-    """Write rows as a CSV with union-of-keys columns. Identity prefix first."""
+    """Write rows as a CSV. Leading identity columns first, then LZD-relevant
+    AMR hits, then 23S pileup mutations, then everything else alphabetical."""
     if not rows:
         path.write_text(",".join(_LEADING) + "\n")
         return
-    extras = sorted({k for r in rows for k in r.keys() if k not in _LEADING}, key=_group_rank)
+    # Identify LZD-relevant AMR columns vs LZD pileup mutation columns vs others
+    lzd_amr_cols: set[str] = set()
+    lzd_pileup_cols: set[str] = set()
+    # LZD AMR hits are those whose AmrHit was flagged linezolid-relevant; we can't
+    # introspect AmrHit from rows alone, so apply a lightweight rule on column name.
+    LZD_GENE_TOKENS = ("cfr", "optr", "poxt", "23s_", "rplc", "rpld", "rplv")
+    for r in rows:
+        for k in r:
+            if k in _LEADING:
+                continue
+            k_low = k.lower()
+            # 23S pileup mutation pattern: <BASE><digits><BASE>
+            if len(k) >= 4 and k[0] in "ACGT" and k[-1] in "ACGT" and k[1:-1].isdigit():
+                lzd_pileup_cols.add(k)
+            elif any(tok in k_low for tok in LZD_GENE_TOKENS):
+                lzd_amr_cols.add(k)
+    extras = sorted(
+        {k for r in rows for k in r.keys() if k not in _LEADING},
+        key=lambda c: _column_rank(c, lzd_amr_cols, lzd_pileup_cols),
+    )
     fieldnames = list(_LEADING) + extras
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as fh:

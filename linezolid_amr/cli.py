@@ -105,21 +105,78 @@ def _find_paired_reads(basename: str, folder: Path) -> tuple[Path, Path | None] 
     return r1, r2
 
 
-def discover_samples(folder: Path) -> list[dict]:
+def _strip_fastq_ext(name: str) -> str | None:
+    for ext in _FASTQ_EXTS:
+        if name.lower().endswith(ext):
+            return name[: -len(ext)]
+    return None
+
+
+def _read_basename(stem: str) -> str | None:
+    """Return the sample basename from an R1 read filename stem.
+
+    Strips one of the recognised R1 suffixes (``_R1_001``/``_R1``/``_1``).
+    Returns None if stem is not an R1 read.
+    """
+    for suf in _R1_PATTERNS:
+        if stem.endswith(suf):
+            return stem[: -len(suf)]
+    return None
+
+
+def discover_samples(folder: Path, reads_only: bool = False) -> list[dict]:
+    """Discover sample triples in *folder*.
+
+    Default behaviour (reads_only=False):
+      - First match assemblies (``*.fasta/.fa/.fas/.fna``), then look for paired
+        FASTQs sharing the basename. Samples without paired reads are tagged
+        ``missing_reads=True``.
+      - Additionally, any R1/R2 pair that has *no* matching assembly is also
+        emitted, but with ``assembly=None`` so the caller can decide whether to
+        run reads-only mode (requires --organism).
+
+    reads_only=True: only enumerate R1/R2 pairs; no assemblies are considered.
+    """
     folder = folder.resolve()
     out: list[dict] = []
+    consumed_reads: set[Path] = set()
+
+    if not reads_only:
+        for f in sorted(folder.iterdir()):
+            if not f.is_file():
+                continue
+            base = _strip_assembly_ext(f.name)
+            if base is None:
+                continue
+            reads = _find_paired_reads(base, folder)
+            if reads is None:
+                out.append({"sample": base, "assembly": f, "r1": None, "r2": None, "missing_reads": True})
+                continue
+            r1, r2 = reads
+            consumed_reads.add(r1)
+            if r2:
+                consumed_reads.add(r2)
+            out.append({"sample": base, "assembly": f, "r1": r1, "r2": r2})
+
+    # Reads-only samples: every R1 file whose pair hasn't been claimed by an assembly
+    seen_bases = {s["sample"] for s in out}
     for f in sorted(folder.iterdir()):
-        if not f.is_file():
+        if not f.is_file() or f in consumed_reads:
             continue
-        base = _strip_assembly_ext(f.name)
-        if base is None:
+        stem = _strip_fastq_ext(f.name)
+        if stem is None:
+            continue
+        base = _read_basename(stem)
+        if base is None or base in seen_bases:
             continue
         reads = _find_paired_reads(base, folder)
         if reads is None:
-            out.append({"sample": base, "assembly": f, "r1": None, "r2": None, "missing_reads": True})
             continue
         r1, r2 = reads
-        out.append({"sample": base, "assembly": f, "r1": r1, "r2": r2})
+        if r1 in consumed_reads:
+            continue
+        out.append({"sample": base, "assembly": None, "r1": r1, "r2": r2, "reads_only": True})
+        seen_bases.add(base)
     return out
 
 
@@ -175,29 +232,49 @@ def _resolve_organism(
 
 
 def _run_single(
-    sample: str, assembly: Path, r1: Path, r2: Path | None,
+    sample: str, assembly: Path | None, r1: Path, r2: Path | None,
     user_organism: str | None, outdir: Path, threads: int,
     min_af: float, min_depth: int, plus: bool,
     skip_amrfinder: bool, skip_rrna23s: bool,
 ) -> dict:
+    """Per-sample pipeline.
+
+    Reads-only mode: when ``assembly is None`` the MLST and AMRFinderPlus
+    stages are skipped; only the 23S read-level analysis runs. The user must
+    supply ``--organism`` in that case.
+    """
     outdir.mkdir(parents=True, exist_ok=True)
     click.echo(f"\n=== {sample} ===")
 
-    click.echo(">> MLST / organism inference...")
-    organism, mlst_scheme, st, mlst_alleles = _resolve_organism(user_organism, assembly, threads)
-    click.echo(f"   organism: {organism}   MLST scheme: {mlst_scheme or '-'}   ST: {st or '-'}")
-    if mlst_alleles:
-        click.echo(f"   alleles: {mlst_alleles}")
+    mlst_scheme = mlst_alleles = None
+    st = None
+    if assembly is not None:
+        click.echo(">> MLST / organism inference...")
+        organism, mlst_scheme, st, mlst_alleles = _resolve_organism(user_organism, assembly, threads)
+        click.echo(f"   organism: {organism}   MLST scheme: {mlst_scheme or '-'}   ST: {st or '-'}")
+        if mlst_alleles:
+            click.echo(f"   alleles: {mlst_alleles}")
+    else:
+        # 23S-only mode: no assembly → no MLST, AMRFinderPlus skipped, --organism required.
+        if not user_organism:
+            raise click.ClickException(
+                f"Reads-only mode requires --organism (no assembly supplied). "
+                f"Pass one of: {', '.join(_SUPPORTED_ORGS)}."
+            )
+        organism = user_organism
+        click.echo(f">> Reads-only mode (no assembly): organism={organism}")
+        skip_amrfinder = True  # nothing to scan
 
     parameters = {
-        "sample": sample, "assembly": str(assembly),
+        "sample": sample, "assembly": str(assembly) if assembly else None,
         "r1": str(r1), "r2": str(r2) if r2 else None,
         "organism": organism, "mlst_scheme": mlst_scheme, "st": st,
         "threads": threads, "min_af": min_af, "min_depth": min_depth, "plus": plus,
+        "reads_only": assembly is None,
     }
 
     amr_hits = []
-    if not skip_amrfinder:
+    if not skip_amrfinder and assembly is not None:
         click.echo(">> Running AMRFinderPlus...")
         tsv = amr_mod.run_amrfinder(assembly, organism, outdir / "amrfinder", threads=threads, plus=plus)
         amr_hits = amr_mod.parse_amrfinder_tsv(tsv)
@@ -336,9 +413,13 @@ def _shared_run_options(f):
 
 
 @main.command("run",
-              help=f"Run the pipeline on a single sample.\n\n{ORGANISMS_HELP}")
-@click.option("-a", "--assembly", required=True, type=click.Path(exists=True, path_type=Path),
-              help="Genome assembly FASTA.")
+              help=f"Run the pipeline on a single sample.\n\n"
+                   f"With -a/--assembly: full pipeline (MLST + AMRFinderPlus + 23S).\n"
+                   f"Without -a: reads-only 23S linezolid-resistance call; -O/--organism required.\n\n"
+                   f"{ORGANISMS_HELP}")
+@click.option("-a", "--assembly", required=False, default=None,
+              type=click.Path(exists=True, path_type=Path),
+              help="Genome assembly FASTA. Omit for reads-only 23S analysis (--organism required).")
 @click.option("-1", "--r1", required=True, type=click.Path(exists=True, path_type=Path),
               help="Forward reads (FASTQ, optionally gzip).")
 @click.option("-2", "--r2", default=None, type=click.Path(exists=True, path_type=Path),
@@ -346,12 +427,26 @@ def _shared_run_options(f):
 @click.option("-o", "--outdir", required=True, type=click.Path(path_type=Path),
               help="Output directory.")
 @click.option("-s", "--sample", default=None,
-              help="Sample name (default: assembly basename).")
+              help="Sample name (default: assembly basename or R1 basename).")
 @_shared_run_options
 def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_depth, plus,
             skip_amrfinder, skip_rrna23s):
     _print_banner()
-    sample = sample or assembly.stem
+    if sample is None:
+        if assembly is not None:
+            sample = assembly.stem
+        else:
+            # derive from R1 basename, stripping common suffixes
+            base = r1.name
+            for ext in (".fastq.gz", ".fq.gz", ".fastq", ".fq"):
+                if base.lower().endswith(ext):
+                    base = base[: -len(ext)]
+                    break
+            for suf in ("_R1_001", "_R1", "_1"):
+                if base.endswith(suf):
+                    base = base[: -len(suf)]
+                    break
+            sample = base
     res = _run_single(
         sample, assembly, r1, r2, organism, outdir, threads, min_af, min_depth, plus,
         skip_amrfinder, skip_rrna23s,
@@ -366,23 +461,40 @@ def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_dep
 @main.command("folder",
               help=f"Run the pipeline on every sample in a folder, emit a cohort summary.\n\n"
                    f"Discovery: *.fasta/*.fa/*.fas/*.fna paired with FASTQs by basename "
-                   f"(R1/R2/_1/_2/_001 × .fastq[.gz]/.fq[.gz]).\n\n{ORGANISMS_HELP}")
+                   f"(R1/R2/_1/_2/_001 × .fastq[.gz]/.fq[.gz]).\n\n"
+                   f"With --reads-only: ignore assemblies entirely, batch every R1/R2 pair "
+                   f"in reads-only 23S mode (--organism required).\n\n{ORGANISMS_HELP}")
 @click.option("-i", "--input", "input_dir", required=True,
               type=click.Path(exists=True, file_okay=False, path_type=Path),
               help="Folder containing assemblies + paired FASTQs.")
 @click.option("-o", "--outdir", required=True, type=click.Path(path_type=Path),
               help="Output directory; one subfolder per sample.")
+@click.option("--reads-only", is_flag=True, default=False,
+              help="Skip assembly discovery; process every R1/R2 pair in 23S-only mode (requires --organism).")
 @_shared_run_options
 def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
-               skip_amrfinder, skip_rrna23s):
+               skip_amrfinder, skip_rrna23s, reads_only):
     _print_banner()
-    samples = discover_samples(input_dir)
+    samples = discover_samples(input_dir, reads_only=reads_only)
     if not samples:
-        raise click.ClickException(f"No assemblies (*.fasta/*.fa/*.fas/*.fna) found in {input_dir}")
+        raise click.ClickException(
+            f"No samples found in {input_dir}. "
+            f"{'Looked for FASTQ R1/R2 pairs.' if reads_only else 'Looked for *.fasta + paired FASTQs and bare R1/R2 pairs.'}"
+        )
 
     valid = [s for s in samples if not s.get("missing_reads")]
     skipped = [s for s in samples if s.get("missing_reads")]
-    click.echo(f"Discovered {len(valid)} samples (skipping {len(skipped)} without paired reads).")
+    n_full = sum(1 for s in valid if s.get("assembly") is not None)
+    n_reads_only = sum(1 for s in valid if s.get("assembly") is None)
+    if n_reads_only and not organism:
+        raise click.ClickException(
+            f"{n_reads_only} sample(s) have only FASTQ reads (no matching assembly). "
+            f"Pass -O/--organism for reads-only 23S mode or supply the assemblies."
+        )
+    click.echo(
+        f"Discovered {len(valid)} samples "
+        f"({n_full} full pipeline, {n_reads_only} reads-only; skipping {len(skipped)} without paired reads)."
+    )
     for s in skipped:
         click.echo(f"   ⚠ {s['sample']}: paired reads not found in {input_dir}", err=True)
 

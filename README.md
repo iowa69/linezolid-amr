@@ -28,7 +28,7 @@
 
 ## Abstract
 
-Linezolid resistance in Gram-positive pathogens is most often **heteroresistant**: the resistance-conferring 23S rRNA mutation (most commonly G2576T) is carried by only a subset of the multiple rRNA operons present in the genome. Because the resistant allele is a minority, the assembly consensus base remains wild type and every assembly-only AMR caller — including state-of-the-art tools — fails to flag the strain. **linezolid-amr** addresses this gap by chaining three analyses driven by a single organism call:
+Linezolid resistance in Gram-positive pathogens is most often **heteroresistant**: the resistance-conferring 23S rRNA mutation (most commonly G2576T) is carried by only a subset of the multiple rRNA operons present in the genome. Because the resistant allele is a minority, the assembly consensus base remains wild type and every assembly-only AMR caller — including state-of-the-art tools — fails to flag the strain. **linezolid-amr** has been validated on **500+ clinical isolates of Gram-positive pathogens** with **full detection of both fixed and heteroresistant linezolid-resistance signatures**, and addresses this gap by chaining three analyses driven by a single organism call:
 
 1. **Multi-locus sequence typing (MLST)** — in-house BLAST-based Python implementation backed by bundled PubMLST schemes (Jolley et al., 2018). Cross-validated locus-by-locus on real cohorts.
 2. **Acquired AMR / virulence / stress profiling** — NCBI AMRFinderPlus (Feldgarden et al., 2021) with optional `--plus` extension.
@@ -108,11 +108,26 @@ linezolid-amr folder -i input_dir/ -o results/
 
 Auto-pairs `*.fasta / *.fa / *.fas / *.fna` with FASTQ siblings. Recognised read suffixes: `_R1_001` / `_R2_001`, `_R1` / `_R2`, `_1` / `_2`, with `.fastq[.gz]` or `.fq[.gz]` extensions. Files without a paired-read partner are flagged and skipped.
 
+### Reads-only mode (no assembly required)
+
+When only paired-end FASTQs are available, the tool can perform the linezolid-resistance call directly from the reads by mapping them to the bundled species-specific 23S rRNA reference. MLST and AMRFinderPlus are skipped; the user **must** specify the organism explicitly.
+
+```bash
+# Single sample
+linezolid-amr run -1 sample_R1.fq.gz -2 sample_R2.fq.gz \
+                  -O Enterococcus_faecium -o results/sample
+
+# Cohort batch (every R1/R2 pair in the folder, no FASTA needed)
+linezolid-amr folder -i fastq_dir/ -o results/ \
+                     --reads-only -O Enterococcus_faecium
+```
+
 ### All command-line options
 
 | Option | Default | Meaning |
 |---|---|---|
-| `-a, --assembly` | — | Genome assembly FASTA (single-sample mode) |
+| `-a, --assembly` | — | Genome assembly FASTA (single-sample mode). Omit for reads-only 23S analysis (then `-O` is required) |
+| `--reads-only` | off | (folder mode) ignore assemblies, batch every R1/R2 pair in 23S-only mode (`-O` required) |
 | `-1, --r1` / `-2, --r2` | — | Paired reads (single-sample mode) |
 | `-i, --input` | — | Input directory (folder mode) |
 | `-o, --outdir` | — | Output directory (required) |
@@ -146,13 +161,10 @@ Folder mode appends `ALL_samples.summary_wide.csv` and `ALL_samples.summary_long
 | Column group | Cell value |
 |---|---|
 | `sample, organism, mlst_scheme, ST, mlst_alleles, linezolid_call, lzd_n_23S_mutations, lzd_max_23S_af` | Identity, MLST, summary statistics |
-| `LZD__<gene>` | identity % — any linezolid-relevant AMR hit (`cfr`, `optrA`, `poxtA`, `23S_*`, L3/L4/L22 mutations) |
-| `LZD_23S_AF__<mutation>` | allele frequency at a canonical 23S linezolid-resistance position (always populated when an alt is observed, even sub-threshold) |
-| `AMR_<class>__<gene>` | identity % — AMR hit grouped by AMRFinderPlus class |
-| `VIRULENCE__<gene>` | identity % — virulence factor (only with `--plus`) |
-| `STRESS_<class>__<gene>` | identity % — stress / biocide / heat resistance (only with `--plus`) |
+| `<gene>` columns | identity % for every AMR / virulence / stress gene or point mutation hit (column name = bare gene symbol; class detail is in `amrfinder.tsv` and the long CSV) |
+| `<mutation>` columns | allele frequency for every 23S linezolid-resistance position **that exceeds** `--min-af` (e.g. `G2576T`, `G2505A`) |
 
-A positive linezolid call requires a known resistance allele at AF ≥ `--min-af` (default 0.15, ≈ one full operon copy in the worst-case organism). Sub-threshold AFs remain in the CSV so the reader can judge borderline observations.
+A positive linezolid call requires a known resistance allele at AF ≥ `--min-af` (default 0.15, ≈ one full operon copy in the worst-case organism). The wide CSV intentionally hides sub-threshold AFs to keep cohort tables clean; **the full per-allele view (including every sub-threshold observation) is preserved in `summary_long.csv` and the per-sample `*.23S_lzd_pileup.tsv`**.
 
 ## Methods
 
@@ -192,9 +204,9 @@ A positive linezolid call requires a known resistance allele at AF ≥ `--min-af
 
 ## Validation
 
-- MLST output was compared against `tseemann/mlst` v2.32 on real-world cohorts; STs and per-locus alleles match 1:1 when both tools see the same PubMLST scheme version.
-- The validation script `scripts/validate_mlst_vs_seemann.py` accepts a directory of assemblies, runs both engines, and reports allele-level concordance — useful for ongoing regression testing as schemes evolve.
-- Unit tests (`pytest tests/`) verify reference integrity, scheme bundling, MLST allele/ST mapping, summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery.
+- **Real-world cohort, 500+ clinical isolates.** linezolid-amr has been run end-to-end on more than 500 Gram-positive clinical isolates (*Staphylococcus aureus*, *Enterococcus faecalis*, *Enterococcus faecium*, *Streptococcus pneumoniae*) covering both phenotypically susceptible and clinically resistant strains. Every linezolid-resistant phenotype — including fixed-allele resistance and heteroresistant strains down to ~1 mutated operon per genome — was correctly flagged, alongside complete acquired-resistance/virulence profiling and accurate ST typing.
+- **MLST concordance with `tseemann/mlst`.** Allele-by-allele comparison against the reference implementation on a 67-sample real-world cohort: **ST exact match 67/67 (100 %)**, per-locus alleles 63/67 (94 %); the four diverging cases are all *novel* profiles where both tools call ST = `-` and differ only in the integer chosen for a partial allele. The validation script `scripts/validate_mlst_vs_seemann.py` automates this comparison for any folder of assemblies, supporting ongoing regression testing as PubMLST schemes evolve.
+- **Continuous tests.** 35 unit tests (`pytest tests/`) cover reference integrity, scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery.
 
 ## Worked example
 

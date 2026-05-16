@@ -70,3 +70,28 @@ def test_legacy_alias_reexports():
 def test_unsupported_organism_raises():
     with pytest.raises(im.MlstUnsupportedOrganism):
         im.run_internal_mlst(Path("/nonexistent.fa"), "Escherichia_coli")
+
+
+def test_null_locus_matches_pubmlst_zero():
+    """E. faecium ST1478 has pstS=0 (deleted). Our '-' (no hit) must match
+    that profile entry so the ST gets assigned correctly."""
+    sdir = im.scheme_dir("efaecium")
+    loci, profiles = im._load_profiles(sdir)
+    # ST1478 profile: atpA=9, ddl=1, gdh=1, purK=1, gyd=1, pstS=0, adk=1
+    # Simulate a sample where pstS is a genuine deletion -> '-'
+    locus_to_call = {"atpA": "9", "ddl": "1", "gdh": "1", "purK": "1",
+                     "gyd": "1", "pstS": "-", "adk": "1"}
+    tup = tuple(locus_to_call[l] for l in loci)
+    st, _ = im._assign_st(tup, loci, profiles)
+    assert st == "1478"
+
+
+def test_partial_allele_still_unassigned():
+    """A '~n' partial call must NOT trigger the null-equivalence path."""
+    sdir = im.scheme_dir("efaecium")
+    loci, profiles = im._load_profiles(sdir)
+    locus_to_call = {"atpA": "9", "ddl": "1", "gdh": "1", "purK": "1",
+                     "gyd": "1", "pstS": "~1", "adk": "1"}
+    tup = tuple(locus_to_call[l] for l in loci)
+    st, _ = im._assign_st(tup, loci, profiles)
+    assert st == "-"
