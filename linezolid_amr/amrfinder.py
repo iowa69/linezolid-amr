@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -65,15 +66,44 @@ def amrfinder_available() -> bool:
     return shutil.which("amrfinder") is not None
 
 
+_DB_DIR_RE = re.compile(r"Database directory:\s*'?([^'\n]+?)'?\s*$", re.MULTILINE)
+
+# `amrfinder -V` is cheap but not free, and folder mode would otherwise ask
+# once per sample. The answer cannot change during a run.
+_db_dir_cache: tuple[bool, Path | None] | None = None
+
+
 def _amrfinder_db_dir() -> Path | None:
-    """Best-effort guess of where amrfinder's data lives."""
-    binp = shutil.which("amrfinder")
-    if not binp:
-        return None
-    # amrfinder ships data at <prefix>/share/amrfinderplus/data/latest
-    prefix = Path(binp).resolve().parent.parent
-    candidate = prefix / "share" / "amrfinderplus" / "data" / "latest"
-    return candidate
+    """Ask amrfinder where its database lives.
+
+    Deriving the path from the binary's location is unreliable: AMRFinderPlus
+    resolves its data directory independently, and in a conda layout the
+    database frequently sits under the base prefix while the binary lives in an
+    environment. Guessing wrongly makes every run think the database is missing
+    and re-trigger a ~150 MB update.
+    """
+    global _db_dir_cache
+    if _db_dir_cache is not None:
+        return _db_dir_cache[1]
+
+    result: Path | None = None
+    if shutil.which("amrfinder"):
+        try:
+            proc = subprocess.run(
+                ["amrfinder", "-V"], capture_output=True, text=True, timeout=60
+            )
+            match = _DB_DIR_RE.search((proc.stdout or "") + (proc.stderr or ""))
+            if match:
+                result = Path(match.group(1).strip())
+        except (OSError, subprocess.SubprocessError):
+            result = None
+        if result is None:
+            # Fall back to the conventional layout relative to the binary.
+            binp = shutil.which("amrfinder")
+            prefix = Path(binp).resolve().parent.parent
+            result = prefix / "share" / "amrfinderplus" / "data" / "latest"
+    _db_dir_cache = (True, result)
+    return result
 
 
 def amrfinder_db_ready() -> bool:
@@ -96,6 +126,9 @@ def ensure_amrfinder_db(log_fh=None) -> None:
         raise RuntimeError(
             "amrfinder -u failed. Run it manually and retry."
         )
+    # The database now exists; drop the cached miss so later samples see it.
+    global _db_dir_cache
+    _db_dir_cache = None
 
 
 def run_amrfinder(

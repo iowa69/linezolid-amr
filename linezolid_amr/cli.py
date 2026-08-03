@@ -259,6 +259,13 @@ def _run_single(
             click.echo(f"   alleles: {mlst_alleles}")
     else:
         # 23S-only mode: no assembly → no MLST, AMRFinderPlus skipped, --organism required.
+        # Check for "no work at all" before the organism requirement, so the
+        # user is told the real problem rather than how to configure a stage
+        # they have just disabled.
+        if skip_rrna23s:
+            raise click.ClickException(
+                "Nothing to do: --skip-rrna23s with no assembly leaves no analysis to run."
+            )
         if not user_organism:
             raise click.ClickException(
                 f"Reads-only mode requires --organism (no assembly supplied). "
@@ -267,10 +274,6 @@ def _run_single(
         organism = user_organism
         click.echo(f">> Reads-only mode (no assembly): organism={organism}")
         skip_amrfinder = True  # nothing to scan
-        if skip_rrna23s:
-            raise click.ClickException(
-                "Nothing to do: --skip-rrna23s with no assembly leaves no analysis to run."
-            )
 
     parameters = {
         "sample": sample, "assembly": str(assembly) if assembly else None,

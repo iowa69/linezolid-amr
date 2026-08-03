@@ -21,6 +21,7 @@
   <a href="#methods">Methods</a> ·
   <a href="#validation">Validation</a> ·
   <a href="#worked-example">Worked example</a> ·
+  <a href="#limitations">Limitations</a> ·
   <a href="#manuscript">Manuscript</a> ·
   <a href="#citation">Citation</a>
 </p>
@@ -287,10 +288,50 @@ restores the pre-0.2 behaviour.
 Linezolid resistance call: POSITIVE
 ```
 
+The text report states the mechanism and the operon arithmetic directly:
+
 ```text
-ecoli_pos  ref  depth  counts        alt_alleles            is_resistance
-2576       G    173    G=58; T=115   T:115:0.6647*          True   ← ~4 of 6 operons mutated
+linezolid_resistance_call: POSITIVE
+mechanism: 23S_target_mutation_heteroresistant:G2576T
+HETERORESISTANCE: a resistance allele is present in only part of the rrn operon population.
+
+## 23S resistance positions (E. coli numbering)
+mutation  ref  alleles  AF      95% CI        operons  zygosity          depth
+G2576T    G    T        0.6647  0.591-0.732   4/6      heteroresistant   173
 ```
+
+and `<sample>.23S_lzd_evidence.tsv` carries the evidence behind it — here the
+allele is well represented on both strands, so the strand-bias test is not
+significant and the call stands:
+
+```text
+ecoli_position  alt_base  af      af_ci_low  af_ci_high  alt_fwd  alt_rev  strand_bias_p  est_mutated_operons  filters
+2576            T         0.6647  0.5910     0.7318      57       58       0.87           4                    PASS
+```
+
+## Limitations
+
+Stated plainly, because they bound how the output should be read:
+
+- **Allele fraction is not operon count.** The k/n estimate assumes the species'
+  typical rrn copy number and uniform coverage across operons. Real isolates
+  vary in copy number, and coverage is never perfectly uniform, so treat the
+  estimate as an indication rather than a measurement.
+- **Reads are not deduplicated.** A low-complexity library can concentrate an
+  allele in PCR duplicates, which inflates apparent depth and narrows the
+  confidence interval more than the underlying evidence warrants. Deduplicate
+  upstream if your protocol is duplicate-prone.
+- **Cross-species contamination can mimic heteroresistance.** Reads from a
+  related organism's 23S may map to the reference and carry a different base at
+  a target position. Contamination screening upstream remains necessary.
+- **Positions are not equally supported.** Six positions are documented
+  resistance determinants; two are clinical associations whose independent
+  causal contribution is described as unclear in the literature; the remaining
+  ten were selected in archaea or mycobacteria, or engineered. The tier column
+  says which is which, and only the first two groups drive a call by default.
+- **A positive 23S call is a genotype, not a phenotype.** It should be
+  interpreted alongside susceptibility testing, particularly at fractions near
+  the threshold.
 
 ## Manuscript
 
