@@ -243,16 +243,77 @@ def blastn_available() -> bool:
     return shutil.which("blastn") is not None and shutil.which("makeblastdb") is not None
 
 
+def blastdb_cache_dir() -> Path:
+    """Directory holding decompressed allele FASTAs and their BLAST databases.
+
+    Building these is the dominant cost of MLST: organism inference tries all
+    four schemes, so a naive run rebuilds ~28 databases *per sample*. The
+    scheme files are read-only release artifacts, so the databases derived from
+    them can be built once and reused for every sample on the machine.
+    """
+    env = os.environ.get("LINEZOLID_AMR_BLASTDB_DIR")
+    if env:
+        return Path(env).expanduser().resolve()
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg).expanduser() if xdg else Path.home() / ".cache"
+    return (base / "linezolid-amr" / "blastdb").resolve()
+
+
+def _cache_key(allele_fasta_gz: Path) -> str:
+    """Identify a scheme file by name plus size, so refreshed schemes rebuild."""
+    st = allele_fasta_gz.stat()
+    return f"{Path(allele_fasta_gz.stem).stem}.{st.st_size}"
+
+
 def _ensure_blast_db(allele_fasta_gz: Path, work: Path) -> Path:
-    """Decompress an allele FASTA and build a BLAST nucleotide database."""
-    base = allele_fasta_gz.stem  # strip .gz → .fasta
-    db_prefix = work / Path(base).stem  # strip .fasta
-    fasta = work / base
+    """Decompress an allele FASTA and build a BLAST nucleotide database.
+
+    Databases are cached across samples and runs. ``work`` is used only as a
+    fallback when the cache directory cannot be written (read-only HOME, etc.).
+    """
+    try:
+        cache = blastdb_cache_dir()
+        cache.mkdir(parents=True, exist_ok=True)
+        target_dir = cache
+        stem = _cache_key(allele_fasta_gz)
+    except OSError:
+        target_dir = work
+        stem = Path(allele_fasta_gz.stem).stem
+
+    db_prefix = target_dir / stem
+    fasta = target_dir / f"{stem}.fasta"
+    if db_prefix.with_suffix(".nhr").exists():
+        return db_prefix
+
+    if not fasta.exists():
+        # Write via a temp name so a concurrent run never sees a partial FASTA.
+        tmp = fasta.with_suffix(f".fasta.tmp{os.getpid()}")
+        with gzip.open(allele_fasta_gz, "rb") as gin, tmp.open("wb") as fout:
+            shutil.copyfileobj(gin, fout)
+        os.replace(tmp, fasta)
+
+    try:
+        subprocess.run(
+            ["makeblastdb", "-in", str(fasta), "-dbtype", "nucl", "-out", str(db_prefix)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        if target_dir == work:
+            raise
+        # Cache unusable (permissions, full disk) — fall back to the scratch dir.
+        return _ensure_blast_db_in(allele_fasta_gz, work)
+    return db_prefix
+
+
+def _ensure_blast_db_in(allele_fasta_gz: Path, work: Path) -> Path:
+    """Build a database in *work*, bypassing the shared cache."""
+    stem = Path(allele_fasta_gz.stem).stem
+    db_prefix = work / stem
+    fasta = work / f"{stem}.fasta"
     if not fasta.exists():
         with gzip.open(allele_fasta_gz, "rb") as gin, fasta.open("wb") as fout:
             shutil.copyfileobj(gin, fout)
-    # makeblastdb is idempotent — silently skip if .nhr already exists
-    if not (db_prefix.with_suffix(".nhr").exists()):
+    if not db_prefix.with_suffix(".nhr").exists():
         subprocess.run(
             ["makeblastdb", "-in", str(fasta), "-dbtype", "nucl", "-out", str(db_prefix)],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -418,13 +479,23 @@ def _assign_st(
 
 def infer_organism(assembly: Path, threads: int = 4) -> tuple[str, MlstResult]:
     """Try every supported organism's MLST scheme, pick the one with the most
-    exact allele hits. If none have any hit, raise MlstNoMatch."""
+    exact allele hits. If none have any hit, raise MlstNoMatch.
+
+    Stops early on a decisive result — every locus an exact allele and the
+    profile resolving to a named ST. No other scheme can beat that, and each
+    scheme costs seven blastn runs, so the early exit roughly quarters the
+    cost for the common case of a clean assembly.
+    """
     best: tuple[str, MlstResult] | None = None
     best_score = -1
+    errors: dict[str, str] = {}
     for organism in PUBMLST_DBS:
         try:
             res = run_internal_mlst(assembly, organism, threads=threads)
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            # Record why: a missing scheme or absent blastn otherwise surfaces
+            # as a confusing "no scheme matched".
+            errors[organism] = str(e)
             continue
         # score: number of perfect-allele matches (digit-only IDs)
         score = sum(1 for v in res.alleles.values() if v.isdigit())
@@ -432,10 +503,15 @@ def infer_organism(assembly: Path, threads: int = 4) -> tuple[str, MlstResult]:
         if score > best_score or (score == best_score and best and res.st != "-" and best[1].st == "-"):
             best = (organism, res)
             best_score = score
+        if score == len(res.alleles) and res.st != "-":
+            return organism, res
     if not best or best_score == 0:
+        detail = ""
+        if errors:
+            detail = " Scheme errors: " + "; ".join(f"{o}: {m}" for o, m in errors.items())
         raise MlstNoMatch(
             "No MLST scheme matched the assembly above thresholds. "
             "Either the species is outside our supported list or the assembly is fragmented. "
-            "Pass --organism explicitly to bypass inference."
+            "Pass --organism explicitly to bypass inference." + detail
         )
     return best

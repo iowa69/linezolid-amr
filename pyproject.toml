@@ -34,6 +34,12 @@ linezolid-amr = "linezolid_amr.cli:main"
 Homepage = "https://github.com/iowa69/linezolid-amr"
 Issues = "https://github.com/iowa69/linezolid-amr/issues"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: exercises the real minimap2/samtools pipeline (auto-skipped when absent)",
+]
+testpaths = ["tests"]
+
 [tool.setuptools.packages.find]
 include = ["linezolid_amr*"]
 

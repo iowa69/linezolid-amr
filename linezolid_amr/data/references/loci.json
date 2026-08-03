@@ -1,19 +1,103 @@
 {
-  "version": "2",
-  "description": "Reference accessions, canonical linezolid-resistance 23S rRNA positions, and acquired oxazolidinone resistance genes. Positions use E. coli K-12 23S rRNA numbering (clinical-literature convention). Each position carries a verified PMID. Per-species position maps are computed by fetch-references via global pairwise alignment to E. coli 23S. Coordinates verified from NCBI E-utilities feature tables.",
+  "version": "3",
+  "description": "Reference accessions, canonical linezolid-resistance 23S rRNA positions, and acquired oxazolidinone resistance genes. Positions use E. coli K-12 23S rRNA numbering (the clinical-literature convention). Per-species position maps are computed by fetch-references via global pairwise alignment to E. coli 23S.",
+
+  "numbering_note": "The literature names these mutations on an E. coli coordinate framework but frequently spells the wild-type letter using the base found in the organism the mutation was observed in. C2534U and C2571G are the two clear cases: E. coli K-12 carries A at 2534 and T at 2571, while the Gram-positives carry C at both. We therefore record 'ecoli_ref_base' (always verified against the bundled E. coli reference) separately from 'published_as' (the designation used in the literature). Per-species BED files carry that species' own base, which is what the pileup compares observations against.",
+
+  "evidence_tiers": {
+    "established": "Documented oxazolidinone-resistance determinant: reported in clinical isolates and/or reproduced by in-vitro selection, with an accepted causal role. Drives a positive call.",
+    "associated": "Observed in clinical isolates with reduced linezolid susceptibility, but usually alongside other mutations; Long & Vester 2012 describe the independent causal contribution as unclear. Drives a positive call, flagged as uncertain-causality.",
+    "experimental": "Selected in archaea/mycobacteria or produced by site-directed mutagenesis; never reported in a clinical isolate of a target Gram-positive species. Reported with its allele fraction but does NOT drive a positive call by default (see --evidence-tier)."
+  },
 
   "linezolid_positions_ecoli_23s": [
-    { "ecoli_position": 2032, "ref_base": "G", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"], "evidence_note": "Kloss et al. 1999 mapped this position in archaeal selection (PMID 10556031)" },
-    { "ecoli_position": 2447, "ref_base": "G", "resistance_bases": ["T", "U"],     "drug": "linezolid",            "pmid": ["10556031", "22143525"], "evidence_note": "Original mutational mapping (Kloss 1999); reviewed in Long & Vester 2012" },
-    { "ecoli_position": 2453, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid",            "pmid": ["22143525"], "evidence_note": "Less prevalent; covered in Long & Vester 2012 review" },
-    { "ecoli_position": 2500, "ref_base": "T", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"] },
-    { "ecoli_position": 2503, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid,tedizolid",  "pmid": ["10556031", "16801432"], "evidence_note": "Methylation target of Cfr (Long et al. 2006, PMID 16801432); also direct mutation site" },
-    { "ecoli_position": 2504, "ref_base": "T", "resistance_bases": ["A", "C"],     "drug": "linezolid",            "pmid": ["10556031"] },
-    { "ecoli_position": 2505, "ref_base": "G", "resistance_bases": ["A"],          "drug": "linezolid",            "pmid": ["10556031"] },
-    { "ecoli_position": 2534, "ref_base": "C", "resistance_bases": ["T"],          "drug": "linezolid",            "pmid": ["22143525"] },
-    { "ecoli_position": 2572, "ref_base": "A", "resistance_bases": ["G"],          "drug": "linezolid",            "pmid": ["22143525"] },
-    { "ecoli_position": 2576, "ref_base": "G", "resistance_bases": ["T", "U", "A", "C"], "drug": "linezolid",     "pmid": ["11476839", "22143525"], "evidence_note": "First clinical description in S. aureus (Tsiodras et al. 2001, PMID 11476839). Most prevalent mutation across genera.", "note": "Most prevalent 23S linezolid resistance mutation across genera" },
-    { "ecoli_position": 2603, "ref_base": "G", "resistance_bases": ["T"],          "drug": "linezolid",            "pmid": ["22143525"] }
+    { "ecoli_position": 2447, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2447U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "established",
+      "organisms": ["Staphylococcus aureus", "Staphylococcus epidermidis", "Escherichia coli", "Mycobacterium smegmatis"],
+      "pmid": ["10986233", "22143525"], "evidence_note": "Clinical staphylococci and in-vitro selection; Long & Vester 2012 Table 1. Reported as G2474U in papers using staphylococcal gene numbering." },
+
+    { "ecoli_position": 2500, "ecoli_ref_base": "T", "ref_base": "T", "published_as": "U2500A", "resistance_bases": ["A", "C"], "drug": "linezolid,tedizolid", "evidence_tier": "established",
+      "organisms": ["Staphylococcus aureus", "Escherichia coli", "Halobacterium halobium"],
+      "pmid": ["19752277", "10556031", "22143525"], "evidence_note": "U2500A clinical/selected in S. aureus (also under torezolid selection, Locke 2009); U2500C selected in H. halobium (Kloss 1999)." },
+
+    { "ecoli_position": 2503, "ecoli_ref_base": "A", "ref_base": "A", "published_as": "A2503G", "resistance_bases": ["G", "T", "U"], "drug": "linezolid", "evidence_tier": "established",
+      "organisms": ["Streptococcus pneumoniae", "Mycobacterium smegmatis"],
+      "pmid": ["20696869", "21700630"], "evidence_note": "Selected in S. pneumoniae and M. smegmatis. Also the nucleotide methylated by Cfr — methylation and mutation are distinct mechanisms at the same base." },
+
+    { "ecoli_position": 2504, "ecoli_ref_base": "T", "ref_base": "T", "published_as": "U2504A", "resistance_bases": ["A", "C", "G"], "drug": "linezolid", "evidence_tier": "established",
+      "organisms": ["Staphylococcus epidermidis", "Staphylococcus aureus", "Halobacterium halobium", "Mycobacterium smegmatis"],
+      "pmid": ["24915435", "10556031", "20696869"], "evidence_note": "U2504A in clinical coagulase-negative staphylococci (Tewhey 2014); U2504C the substitution obtained by direct linezolid selection (Kloss 1999); U2504G engineered." },
+
+    { "ecoli_position": 2505, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2505A", "resistance_bases": ["A"], "drug": "linezolid", "evidence_tier": "established",
+      "organisms": ["Enterococcus faecium", "Enterococcus faecalis", "Mycobacterium smegmatis"],
+      "pmid": ["11408243", "20696869"], "evidence_note": "Serial-passage selection in E. faecium (Prystowsky 2001); Long & Vester 2012 Table 1." },
+
+    { "ecoli_position": 2576, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2576U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "established",
+      "organisms": ["Staphylococcus aureus", "Staphylococcus epidermidis", "Staphylococcus haemolyticus", "Enterococcus faecium", "Enterococcus faecalis", "Streptococcus pneumoniae"],
+      "pmid": ["11476839", "22143525"], "evidence_note": "By far the most frequently reported 23S linezolid-resistance mutation across genera; first clinical description in S. aureus (Tsiodras 2001). Only G->U/T is documented — G2576A and G2576C were removed in v3 as unsupported.",
+      "note": "Most prevalent 23S linezolid resistance mutation across genera" },
+
+    { "ecoli_position": 2534, "ecoli_ref_base": "A", "ref_base": "A", "published_as": "C2534U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "associated",
+      "organisms": ["Staphylococcus epidermidis", "Staphylococcus haemolyticus", "coagulase-negative staphylococci"],
+      "pmid": ["19933808", "24915435", "31496534"],
+      "evidence_note": "Frequently reported in linezolid-resistant CoNS, but nearly always alongside other 23S/L3/L4 changes; Long & Vester 2012 state the direct relationship to resistance is unclear.",
+      "numbering_caveat": "Published as 'C2534U' using the staphylococcal wild-type base. E. coli K-12 carries A at 2534; the Gram-positives carry C. The per-species BED uses the species base (C), so the pileup compares against the correct nucleotide." },
+
+    { "ecoli_position": 2603, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2603U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "associated",
+      "organisms": ["Staphylococcus epidermidis", "Staphylococcus hominis"],
+      "pmid": ["19876662", "22143525"],
+      "evidence_note": "Reported in clinical staphylococci; Long & Vester 2012 mention it only in prose and describe its causal relationship to resistance as unclear (it is not in their Table 1).",
+      "numbering_caveat": "Treat staphylococcal reports with care: E. coli 2576 aligns to S. aureus 23S GENE position 2603, so some papers reporting 'G2603T' in staphylococcal gene coordinates are describing G2576T. Lincopan 2009 (PMID 19376688) carries an erratum and the same group later described the clone as G2576T (PMID 22186879). A sample positive at both 2576 and 2603 should be reviewed rather than reported as two independent mutations." },
+
+    { "ecoli_position": 2032, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2032A", "resistance_bases": ["A", "C"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Escherichia coli", "Mycobacterium smegmatis"],
+      "pmid": ["10986233"], "evidence_note": "Selected in E. coli (Xiong 2000) and engineered in M. smegmatis. Not reported in a clinical Gram-positive isolate." },
+
+    { "ecoli_position": 2061, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2061U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Mycobacterium tuberculosis"],
+      "pmid": ["22143525"], "evidence_note": "Selected in M. tuberculosis; Long & Vester 2012 Table 1." },
+
+    { "ecoli_position": 2062, "ecoli_ref_base": "A", "ref_base": "A", "published_as": "A2062C", "resistance_bases": ["C"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Halobacterium halobium"],
+      "pmid": ["10556031"], "evidence_note": "Archaeal selection (Kloss 1999); Long & Vester 2012 Table 1." },
+
+    { "ecoli_position": 2452, "ecoli_ref_base": "C", "ref_base": "C", "published_as": "C2452U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Halobacterium halobium"],
+      "pmid": ["10556031"], "evidence_note": "Archaeal selection (Kloss 1999); a linezolid-contact nucleotide in the peptidyl transferase centre." },
+
+    { "ecoli_position": 2453, "ecoli_ref_base": "A", "ref_base": "A", "published_as": "A2453G", "resistance_bases": ["G", "C"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Halobacterium halobium"],
+      "pmid": ["10556031"], "evidence_note": "Archaeal selection only (Kloss 1999). Converting this base to the human cytosolic identity did not reduce linezolid susceptibility in M. smegmatis (PMID 20696869)." },
+
+    { "ecoli_position": 2499, "ecoli_ref_base": "C", "ref_base": "C", "published_as": "C2499U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Halobacterium halobium"],
+      "pmid": ["10556031"], "evidence_note": "Archaeal selection (Kloss 1999); Long & Vester 2012 Table 1." },
+
+    { "ecoli_position": 2571, "ecoli_ref_base": "T", "ref_base": "T", "published_as": "C2571G", "resistance_bases": ["G", "C"], "drug": "linezolid,tedizolid", "evidence_tier": "experimental",
+      "organisms": ["Mycobacterium smegmatis", "Staphylococcus aureus"],
+      "pmid": ["20696869", "19752277"],
+      "evidence_note": "Engineered in M. smegmatis (Long 2010). A T2571C change was also reported in torezolid/tedizolid-selected S. aureus alongside G2576T (Locke 2009).",
+      "numbering_caveat": "Published as 'C2571G' using the M. smegmatis base. E. coli K-12 and the staphylococci carry T at 2571; the enterococci and S. pneumoniae carry C." },
+
+    { "ecoli_position": 2572, "ecoli_ref_base": "A", "ref_base": "A", "published_as": "A2572U", "resistance_bases": ["T", "U"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Mycobacterium smegmatis"],
+      "pmid": ["20696869", "22143525"],
+      "evidence_note": "Engineered in M. smegmatis; Long & Vester 2012 Table 1 lists A2572U. Versions <=0.1.6 of this file incorrectly screened for A2572G, which is not a reported substitution." },
+
+    { "ecoli_position": 2608, "ecoli_ref_base": "G", "ref_base": "G", "published_as": "G2608U", "resistance_bases": ["T", "U", "C"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Escherichia coli"],
+      "pmid": ["22143525"], "evidence_note": "Engineered in E. coli; Long & Vester 2012 Table 1. Distinct from G2603 — do not conflate." },
+
+    { "ecoli_position": 2612, "ecoli_ref_base": "C", "ref_base": "C", "published_as": "C2612A", "resistance_bases": ["A"], "drug": "linezolid", "evidence_tier": "experimental",
+      "organisms": ["Mycobacterium smegmatis"],
+      "pmid": ["20696869"], "evidence_note": "Engineered in M. smegmatis; Long & Vester 2012 Table 1." }
+  ],
+
+  "excluded_positions": [
+    { "position": "C2611G/T, A2058G, A2059G", "reason": "Macrolide / streptogramin-B determinants, not oxazolidinone." },
+    { "position": "G2631T", "reason": "Present in the linezolid-susceptible reference strain RP62A — a lineage polymorphism, not a resistance determinant." },
+    { "position": "C2190T, G2474T", "reason": "Staphylococcal gene numbering. G2474T is E. coli G2447T and is already covered by that entry." },
+    { "position": "C2055A", "reason": "Confers linezolid hypersusceptibility on its own; only an enhancer in combination." },
+    { "position": "A2451, U2506, G2445", "reason": "Linezolid-contact nucleotides, but no viable resistance substitution has been selected." }
   ],
 
   "acquired_resistance_gene_references": {
@@ -23,8 +107,10 @@
   },
 
   "review_references": [
-    { "pmid": "22143525", "summary": "Long KS, Vester B. 2012. Resistance to linezolid caused by modifications at its binding site on the ribosome. AAC. Comprehensive review of all 23S linezolid resistance mechanisms." },
-    { "pmid": "10556031", "summary": "Kloss P et al. 1999. Resistance mutations in 23S rRNA identify the site of action of the protein synthesis inhibitor linezolid in the ribosomal peptidyl transferase center. JMB. Foundational mutational mapping." }
+    { "pmid": "22143525", "summary": "Long KS, Vester B. 2012. Resistance to linezolid caused by modifications at its binding site on the ribosome. AAC. Comprehensive review; Table 1 is the reference list of substantiated 23S substitutions." },
+    { "pmid": "20696869", "summary": "Long KS et al. 2010. Mutations in 23S rRNA at the peptidyl transferase center and their relationship to linezolid binding and cross-resistance. AAC. Site-directed panel in single-operon M. smegmatis." },
+    { "pmid": "10556031", "summary": "Kloss P et al. 1999. Resistance mutations in 23S rRNA identify the site of action of linezolid in the peptidyl transferase centre. JMB. Archaeal (H. halobium) selection: A2062C, C2452U, A2453G/C, C2499U, U2500C, U2504C." },
+    { "pmid": "24915435", "summary": "Tewhey R et al. 2014. Mechanisms of linezolid resistance among coagulase-negative staphylococci. mBio. Clinical CoNS whole-genome series." }
   ],
 
   "ecoli_reference": {
@@ -34,7 +120,11 @@
     "start": 4168641,
     "end": 4171544,
     "strand": "+",
-    "expected_length_bp": 2904
+    "expected_length_bp": 2904,
+    "framing_landmarks": {
+      "1067": "A", "2058": "A", "2059": "A", "2451": "A", "2452": "C",
+      "2506": "T", "2585": "T", "2602": "A", "2611": "C", "2661": "G"
+    }
   },
 
   "organisms": {
@@ -46,6 +136,7 @@
       "end": 453661,
       "strand": "+",
       "expected_length_bp": 2923,
+      "rrn_copy_number": 5,
       "copy_number_note": "S. aureus typically encodes 5 rrn operons; reads pile on a single reference copy",
       "mlst_schemes": ["saureus"]
     },
@@ -57,6 +148,7 @@
       "end": 253158,
       "strand": "+",
       "expected_length_bp": 2913,
+      "rrn_copy_number": 4,
       "copy_number_note": "E. faecalis typically encodes 4 rrn operons",
       "mlst_schemes": ["efaecalis"]
     },
@@ -68,6 +160,7 @@
       "end": 467974,
       "strand": "+",
       "expected_length_bp": 2914,
+      "rrn_copy_number": 6,
       "copy_number_note": "E. faecium typically encodes 6 rrn operons",
       "mlst_schemes": ["efaecium"]
     },
@@ -79,6 +172,7 @@
       "end": 20043,
       "strand": "+",
       "expected_length_bp": 2902,
+      "rrn_copy_number": 4,
       "copy_number_note": "S. pneumoniae typically encodes 4 rrn operons",
       "mlst_schemes": ["spneumoniae"]
     }

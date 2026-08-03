@@ -13,6 +13,28 @@ from linezolid_amr.amrfinder import AmrHit
 from linezolid_amr.rrna23s import PileupCall
 
 
+def _mechanisms(lzd_amr_hits: list[AmrHit], positions: list[dict]) -> list[str]:
+    """Name the resistance mechanisms behind a positive call.
+
+    Acquired genes and target-site mutations have different clinical
+    implications — one is transferable, the other is not — so a bare
+    POSITIVE/negative is not enough to act on.
+    """
+    out: list[str] = []
+    genes = sorted({h.gene_symbol for h in lzd_amr_hits if h.gene_symbol})
+    if genes:
+        out.append("acquired_gene:" + ",".join(genes))
+    if positions:
+        muts = ",".join(p["mutation"] for p in positions if p["mutation"])
+        fixed = [p for p in positions if p["zygosity"] == "fixed"]
+        hetero = [p for p in positions if p["zygosity"] == "heteroresistant"]
+        if fixed:
+            out.append("23S_target_mutation_fixed:" + muts)
+        if hetero:
+            out.append("23S_target_mutation_heteroresistant:" + muts)
+    return out
+
+
 def _amr_to_dict(h: AmrHit) -> dict:
     return {
         "contig": h.contig,
@@ -34,6 +56,18 @@ def _amr_to_dict(h: AmrHit) -> dict:
     }
 
 
+# An allele at or above this fraction is present in essentially every rrn
+# operon, so the isolate is uniformly resistant rather than heteroresistant.
+FIXED_AF_THRESHOLD = 0.90
+
+
+def classify_zygosity(af: float) -> str:
+    """Describe what an allele fraction implies about the operon population."""
+    if af >= FIXED_AF_THRESHOLD:
+        return "fixed"
+    return "heteroresistant"
+
+
 def build_report(
     sample: str,
     organism: str,
@@ -47,26 +81,55 @@ def build_report(
 
     lzd_amr_hits = [h for h in amr_hits if h.is_linezolid_relevant]
     lzd_23s_hits = [c for c in pileup_calls if c.is_resistance]
+    # Positions where a resistance allele was seen but did not survive filtering.
+    # Reporting these is what makes a negative call interpretable.
+    rejected = [c for c in pileup_calls if c.filtered_resistance and not c.is_resistance]
 
+    def _passing_alts(c: PileupCall) -> list[dict]:
+        return [a for a in c.alt_alleles if a["resistance"] and a.get("passes_filters", True)]
+
+    positions = []
+    for c in lzd_23s_hits:
+        alts = _passing_alts(c)
+        max_af = max((a["af"] for a in alts), default=0.0)
+        best = max(alts, key=lambda a: a["af"], default=None)
+        positions.append({
+            "ecoli_position": c.ecoli_position,
+            "species_position": c.species_position,
+            "ref_base": c.ref_base,
+            "resistance_alleles_present": [a["base"] for a in alts],
+            "max_resistance_af": max_af,
+            "af_ci_low": best["af_ci_low"] if best else 0.0,
+            "af_ci_high": best["af_ci_high"] if best else 0.0,
+            "zygosity": classify_zygosity(max_af),
+            "est_mutated_operons": best["est_mutated_operons"] if best else 0,
+            "rrn_copy_number": best["rrn_copy_number"] if best else 0,
+            "strand_bias_p": best["strand_bias_p"] if best else 1.0,
+            "depth": c.depth,
+            "base_depth": c.base_depth,
+            "mutation": f"{c.ref_base}{c.ecoli_position}{best['base']}" if best else "",
+        })
+
+    heteroresistant = [p for p in positions if p["zygosity"] == "heteroresistant"]
     summary = {
         "linezolid_resistance_call": bool(lzd_amr_hits or lzd_23s_hits),
+        "resistance_mechanism": _mechanisms(lzd_amr_hits, positions),
+        "heteroresistance_detected": bool(heteroresistant),
         "n_total_amr_hits": len(amr_hits),
         "n_linezolid_amr_hits": len(lzd_amr_hits),
         "n_23s_positions_evaluated": len(pileup_calls),
         "n_23s_positions_with_resistance_allele": len(lzd_23s_hits),
+        "n_23s_positions_rejected_by_filters": len(rejected),
         "linezolid_amr_genes_detected": sorted({h.gene_symbol for h in lzd_amr_hits if h.gene_symbol}),
-        "linezolid_23s_positions": [
+        "linezolid_23s_positions": positions,
+        "rejected_23s_positions": [
             {
                 "ecoli_position": c.ecoli_position,
-                "species_position": c.species_position,
                 "ref_base": c.ref_base,
-                "resistance_alleles_present": [a["base"] for a in c.alt_alleles if a["resistance"]],
-                "max_resistance_af": max(
-                    (a["af"] for a in c.alt_alleles if a["resistance"]), default=0.0
-                ),
                 "depth": c.depth,
+                "rejections": c.filtered_resistance,
             }
-            for c in lzd_23s_hits
+            for c in rejected
         ],
     }
 
@@ -98,13 +161,24 @@ def write_json(report: dict, path: Path) -> None:
 
 def write_text_summary(report: dict, path: Path) -> None:
     s = report["summary"]
+    call = "POSITIVE" if s["linezolid_resistance_call"] else "negative"
     lines = [
-        f"# linezolid-amr report",
+        "# linezolid-amr report",
         f"sample: {report['sample']}",
         f"organism: {report['organism']}",
+        f"tool version: {report['version']}",
         f"generated: {report['generated_at']}",
         "",
-        f"linezolid_resistance_call: {s['linezolid_resistance_call']}",
+        f"linezolid_resistance_call: {call}",
+    ]
+    if s.get("resistance_mechanism"):
+        lines.append("mechanism: " + "; ".join(s["resistance_mechanism"]))
+    if s.get("heteroresistance_detected"):
+        lines.append(
+            "HETERORESISTANCE: a resistance allele is present in only part of the "
+            "rrn operon population (see allele fractions below)."
+        )
+    lines += [
         f"total AMR hits: {s['n_total_amr_hits']}",
         f"linezolid AMR genes: {', '.join(s['linezolid_amr_genes_detected']) or '(none)'}",
         f"23S positions evaluated: {s['n_23s_positions_evaluated']}",
@@ -115,11 +189,34 @@ def write_text_summary(report: dict, path: Path) -> None:
     if not s["linezolid_23s_positions"]:
         lines.append("(none above thresholds)")
     else:
-        lines.append("ecoli_pos\tref\talleles\tmax_af\tdepth")
+        lines.append(
+            "mutation\tref\talleles\tAF\t95% CI\toperons\tzygosity\tdepth"
+        )
         for p in s["linezolid_23s_positions"]:
+            operons = (
+                f"{p['est_mutated_operons']}/{p['rrn_copy_number']}"
+                if p.get("rrn_copy_number") else "-"
+            )
             lines.append(
-                f"{p['ecoli_position']}\t{p['ref_base']}\t"
+                f"{p.get('mutation') or p['ecoli_position']}\t{p['ref_base']}\t"
                 f"{','.join(p['resistance_alleles_present'])}\t"
-                f"{p['max_resistance_af']:.4f}\t{p['depth']}"
+                f"{p['max_resistance_af']:.4f}\t"
+                f"{p.get('af_ci_low', 0):.3f}-{p.get('af_ci_high', 0):.3f}\t"
+                f"{operons}\t{p.get('zygosity', '')}\t{p['depth']}"
+            )
+
+    rejected = s.get("rejected_23s_positions") or []
+    if rejected:
+        lines += [
+            "",
+            "## Resistance alleles observed but rejected by filters",
+            "These did not meet the evidence bar for a positive call. Inspect the",
+            "*.23S_lzd_evidence.tsv file before dismissing them.",
+            "ecoli_pos\tref\tdepth\treason",
+        ]
+        for r in rejected:
+            lines.append(
+                f"{r['ecoli_position']}\t{r['ref_base']}\t{r['depth']}\t"
+                f"{','.join(r['rejections'])}"
             )
     path.write_text("\n".join(lines) + "\n")

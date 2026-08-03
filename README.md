@@ -21,6 +21,7 @@
   <a href="#methods">Methods</a> ·
   <a href="#validation">Validation</a> ·
   <a href="#worked-example">Worked example</a> ·
+  <a href="#manuscript">Manuscript</a> ·
   <a href="#citation">Citation</a>
 </p>
 
@@ -32,7 +33,7 @@ Linezolid resistance in Gram-positive pathogens is most often **heteroresistant*
 
 1. **Multi-locus sequence typing (MLST)** — in-house BLAST-based Python implementation backed by bundled PubMLST schemes (Jolley et al., 2018). Cross-validated locus-by-locus on real cohorts.
 2. **Acquired AMR / virulence / stress profiling** — NCBI AMRFinderPlus (Feldgarden et al., 2021) with optional `--plus` extension.
-3. **23S rRNA heteroresistance detection** — minimap2 short-read alignment to a species-specific 23S reference followed by per-position allele-frequency profiling at the 11 canonical linezolid-resistance positions in *E. coli* K-12 numbering (Kloss et al., 1999; Long & Vester, 2012).
+3. **23S rRNA heteroresistance detection** — minimap2 short-read alignment to a species-specific 23S reference followed by per-position allele-frequency profiling at 18 curated linezolid-resistance positions in *E. coli* K-12 numbering, each tagged with an evidence tier (Kloss et al., 1999; Long et al., 2010; Long & Vester, 2012).
 
 All canonical resistance positions carry verified PubMed citations and the pipeline emits a statistics-friendly sample × gene matrix alongside per-sample machine-readable JSON, BAM, and VCF artefacts. The package ships fully offline (PubMLST schemes and 23S references are bundled in the release tarball) and is distributed via Bioconda.
 
@@ -46,7 +47,7 @@ flowchart LR
     M -->|organism + ST| O
     M -->|species 23S| X
     O --> O1[AMR / virulence / stress hits]
-    X --> P[pysam pileup<br/>11 canonical LZD sites]
+    X --> P[pysam pileup<br/>18 curated LZD sites]
     X --> V[bcftools VCF<br/>ploidy 1]
     O1 --> S[Wide CSV + Long CSV<br/>JSON + text report]
     P --> S
@@ -137,6 +138,12 @@ linezolid-amr folder -i fastq_dir/ -o results/ \
 | `--plus` | off | Pass AMRFinderPlus `--plus` (stress / virulence / biocide) |
 | `--min-af` | **0.15** | Minimum 23S alt-allele frequency for a positive call |
 | `--min-depth` | 20 | Minimum read depth at a 23S position |
+| `--min-baseq` | 13 | Discard bases below this Phred quality before counting alleles |
+| `--min-mapq` | 20 | Discard reads below this mapping quality |
+| `--min-alt-reads` | 3 | Minimum reads supporting an allele before it can be called |
+| `--strand-bias-p` | 1e-3 | Fisher exact *p* below which an allele's strand distribution counts as biased |
+| `--no-strand-filter` | off | Report strand-biased alleles as positive calls (pre-0.2 behaviour) |
+| `--evidence-tier` | `associated` | Weakest evidence tier allowed to drive a POSITIVE call (`established` / `associated` / `experimental`). All tiers are always reported |
 | `--skip-amrfinder`, `--skip-rrna23s` | — | Skip either pipeline stage |
 
 ## Outputs
@@ -147,7 +154,8 @@ results/sample/
 ├── rrna23s/
 │   ├── sample.23S.bam (+ .bai)         # sorted, indexed short-read alignment
 │   ├── sample.23S.vcf.gz (+ .csi)      # bcftools-called variants across 23S
-│   └── sample.23S_lzd_pileup.tsv       # per-position allele frequencies at LZD sites
+│   ├── sample.23S_lzd_pileup.tsv       # per-position allele frequencies at LZD sites
+│   └── sample.23S_lzd_evidence.tsv     # per-allele evidence: strand counts, CI, operon estimate, filters
 ├── sample.linezolid_amr.json           # combined machine-readable report
 ├── sample.linezolid_amr.txt            # human-readable summary
 ├── sample.summary_wide.csv             # one row · one column per detected feature
@@ -164,7 +172,7 @@ Folder mode appends `ALL_samples.summary_wide.csv` and `ALL_samples.summary_long
 | `<gene>` columns | identity % for every AMR / virulence / stress gene or point mutation hit (column name = bare gene symbol; class detail is in `amrfinder.tsv` and the long CSV) |
 | `<mutation>` columns | allele frequency for every 23S linezolid-resistance position **that exceeds** `--min-af` (e.g. `G2576T`, `G2505A`) |
 
-A positive linezolid call requires a known resistance allele at AF ≥ `--min-af` (default 0.15, ≈ one full operon copy in the worst-case organism). The wide CSV intentionally hides sub-threshold AFs to keep cohort tables clean; **the full per-allele view (including every sub-threshold observation) is preserved in `summary_long.csv` and the per-sample `*.23S_lzd_pileup.tsv`**.
+A positive linezolid call requires a known resistance allele that clears every filter (see [Distinguishing heteroresistance from artifact](#distinguishing-heteroresistance-from-artifact)). The wide CSV intentionally hides sub-threshold and filtered AFs to keep cohort tables clean; **the full per-allele view — every sub-threshold observation, the strand counts, the confidence interval, and the reason anything was rejected — is preserved in `summary_long.csv` and the per-sample `*.23S_lzd_evidence.tsv`**.
 
 ## Methods
 
@@ -183,30 +191,84 @@ A positive linezolid call requires a known resistance allele at AF ≥ `--min-af
 ### 23S rRNA heteroresistance
 
 - Reads are aligned with `minimap2 -ax sr` (short-read preset) to a single 23S rRNA copy from the species-specific reference; reads from all rRNA operons collapse onto this single locus, giving deep coverage.
-- `pysam` performs a base-quality-filtered pileup at the 11 canonical *E. coli*-numbered linezolid-resistance positions; `bcftools` (ploidy 1) calls every variant across the locus.
-- Default thresholds for a positive call: AF ≥ 0.15 and depth ≥ 20. Sub-threshold AFs are still emitted in the report (transparency policy).
+- `pysam` performs a base-quality- and mapping-quality-filtered pileup at the 18 curated *E. coli*-numbered positions; `bcftools` (ploidy 1) calls every variant across the locus.
+- Default thresholds for a positive call: AF ≥ 0.15, depth ≥ 20, ≥ 3 supporting reads, base quality ≥ 13, MAPQ ≥ 20, no significant strand bias, and an evidence tier of `associated` or better.
+- Sub-threshold and filtered observations are still emitted with their allele fractions and the reason they were rejected (transparency policy) — a negative call is always explainable.
+- The reference is copied into the run's output directory before indexing, so the installed package is never written to. This matters for conda/system installs where the package directory is read-only.
 
 ### Canonical 23S linezolid-resistance positions (E. coli K-12 numbering)
 
-| Position | WT | Resistance | Reference |
-|:---:|:---:|:---:|---|
-| 2032 | G | A | Kloss et al. 1999 — PMID 10556031 |
-| 2447 | G | T / U | Kloss et al. 1999; Long & Vester 2012 |
-| 2453 | A | G | Long & Vester 2012 — PMID 22143525 |
-| 2500 | T | A | Kloss et al. 1999 |
-| 2503 | A | G | Kloss et al. 1999; Long et al. 2006 |
-| 2504 | T | A / C | Kloss et al. 1999 |
-| 2505 | G | A | Kloss et al. 1999 |
-| 2534 | C | T | Long & Vester 2012 |
-| 2572 | A | G | Long & Vester 2012 |
-| **2576** | **G** | **T / U / A / C** | **Tsiodras et al. 2001 — PMID 11476839 (first clinical case); most prevalent across genera** |
-| 2603 | G | T | Long & Vester 2012 |
+Each position carries an **evidence tier**. Only `established` and `associated`
+positions can produce a POSITIVE call by default; `experimental` positions are
+screened and reported with their allele fractions but never drive a clinical
+call on their own. Use `--evidence-tier` to change the threshold.
+
+| Position | E. coli WT | Resistance | Tier | Reference |
+|:---:|:---:|:---:|:---|---|
+| 2447 | G | T / U | established | Xiong 2000 — PMID 10986233; Long & Vester 2012 |
+| 2500 | T | A / C | established | Locke 2009 — PMID 19752277; Kloss 1999 |
+| 2503 | A | G / U | established | Long 2010 — PMID 20696869 |
+| 2504 | T | A / C / G | established | Tewhey 2014 — PMID 24915435; Kloss 1999 |
+| 2505 | G | A | established | Prystowsky 2001 — PMID 11408243 |
+| **2576** | **G** | **T / U** | **established** | **Tsiodras 2001 — PMID 11476839; most prevalent across genera** |
+| 2534 | **A** | T / U | associated | Wong 2010 — PMID 19933808 · published as "C2534U" (see note) |
+| 2603 | G | T / U | associated | Sorlozano 2010 — PMID 19876662 (see note) |
+| 2032 | G | A / C | experimental | Xiong 2000 — PMID 10986233 |
+| 2061 | G | T / U | experimental | Long & Vester 2012 |
+| 2062 | A | C | experimental | Kloss 1999 — PMID 10556031 |
+| 2452 | C | T / U | experimental | Kloss 1999 |
+| 2453 | A | G / C | experimental | Kloss 1999 |
+| 2499 | C | T / U | experimental | Kloss 1999 |
+| 2571 | **T** | G / C | experimental | Long 2010 · published as "C2571G" (see note) |
+| 2572 | A | **T / U** | experimental | Long 2010 — PMID 20696869 |
+| 2608 | G | T / U / C | experimental | Long & Vester 2012 |
+| 2612 | C | A | experimental | Long 2010 |
+
+**Note on published notation.** The literature numbers these mutations on an
+*E. coli* coordinate framework but often spells the wild-type letter using the
+base found in the organism the mutation was observed in. Positions 2534 and
+2571 are the clear cases: *E. coli* K-12 carries **A** at 2534 and **T** at
+2571, while the Gram-positive targets carry **C** at both. `loci.json`
+therefore records `ecoli_ref_base` (verified against the bundled *E. coli*
+reference) separately from `published_as`, and each per-species BED carries
+that species' own base — which is what the pileup actually compares against.
+
+**Note on G2603.** *E. coli* 2576 aligns to *S. aureus* 23S **gene** position
+2603, so some staphylococcal reports of "G2603T" are describing G2576T in gene
+coordinates. A sample flagged at both 2576 and 2603 should be reviewed rather
+than reported as carrying two independent mutations.
+
+Positions deliberately **excluded** (macrolide determinants, lineage
+polymorphisms, and staphylococcal-gene-numbering duplicates such as G2474T =
+*E. coli* G2447T) are recorded with reasons in `loci.json` under
+`excluded_positions`.
+
+### Distinguishing heteroresistance from artifact
+
+Because the signal of interest is a *minority* allele, it occupies the same
+frequency range as sequencing and alignment noise. Every candidate allele is
+therefore annotated with the evidence needed to separate the two, written to
+`<sample>.23S_lzd_evidence.tsv`:
+
+| Evidence | Why it matters |
+|---|---|
+| Forward/reverse counts + Fisher exact strand-bias *p* | A real mutation is carried by the template and appears on both strands. An allele seen on one strand only is the classic artifact signature, and is rejected. |
+| Wilson 95% CI on the allele fraction | 3/20 reads and 150/1000 reads are both "15%", but only one supports a clinical claim. |
+| Estimated mutated rrn operons (k/n) | rRNA is multi-copy, so genuine fractions cluster near k/n (e.g. 1/5 = 0.20 in *S. aureus*). |
+| Mean depth and base-count depth | The denominator the fraction was computed against. |
+| Evidence tier | Whether the position is a documented determinant or a lab-only substitution. |
+
+The strand-bias filter is skipped where a position lacks coverage on both
+strands, so single-end libraries behave correctly. `--no-strand-filter`
+restores the pre-0.2 behaviour.
 
 ## Validation
 
 - **Real-world cohort, 500+ clinical isolates.** linezolid-amr has been run end-to-end on more than 500 Gram-positive clinical isolates (*Staphylococcus aureus*, *Enterococcus faecalis*, *Enterococcus faecium*, *Streptococcus pneumoniae*) covering both phenotypically susceptible and clinically resistant strains. Every linezolid-resistant phenotype — including fixed-allele resistance and heteroresistant strains down to ~1 mutated operon per genome — was correctly flagged, alongside complete acquired-resistance/virulence profiling and accurate ST typing.
-- **MLST concordance with pubMLST => 100%`.** 
-- **Continuous tests.** 35 unit tests (`pytest tests/`) cover reference integrity, scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery.
+- **MLST concordance with PubMLST.** Allele-by-allele comparison against the reference implementation on a 67-sample real-world cohort: **ST exact match 67/67 (100 %)**, per-locus alleles 63/67 (94 %); the four diverging cases are all *novel* profiles where both tools call ST = `-` and differ only in the integer chosen for a partial allele. `scripts/validate_mlst_vs_seemann.py` automates this comparison for any folder of assemblies, supporting ongoing regression testing as PubMLST schemes evolve.
+- **Coordinate integrity, verified from first principles.** The bundled *E. coli* master is anchored against ten independent 23S landmarks (A2058/A2059 macrolide, A2451/C2452 catalytic, U2506, U2585, A2602, C2611, G2661, A1067). For all four species, every BED target's reference base is checked against that species' own 23S FASTA, and every position map is checked base-by-base against both sequences it links — 2904 rows per organism, 0 errors. These run as tests, so a coordinate regression cannot ship silently.
+- **Allele-fraction recovery, measured not asserted.** A deterministic read simulator generates 23S reads carrying G2576T at known fractions from 0 % to 100 %; the real mapping + pileup path must recover each within tolerance. The same harness verifies that a strand-biased artifact is rejected, that genuine 18–42 % heteroresistance still passes, and that low-quality base noise cannot manufacture a call.
+- **Continuous tests.** 140 tests (`pytest tests/`) covering the above plus scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery. Tests needing minimap2/samtools skip automatically when those are absent.
 
 ## Worked example
 
@@ -220,7 +282,7 @@ A positive linezolid call requires a known resistance allele at AF ≥ `--min-af
 >> Running AMRFinderPlus...
    17 hits, 3 linezolid-relevant
 >> Running 23S rRNA analysis...
-   11 positions; 1 with resistance allele
+   18 positions; 1 with resistance allele
 
 Linezolid resistance call: POSITIVE
 ```
@@ -230,20 +292,51 @@ ecoli_pos  ref  depth  counts        alt_alleles            is_resistance
 2576       G    173    G=58; T=115   T:115:0.6647*          True   ← ~4 of 6 operons mutated
 ```
 
+## Manuscript
+
+A *JAC-Antimicrobial Resistance* Brief Report describing **linezolid-amr** and its validation across 578 Gram-positive isolates (a local clinical *Enterococcus* cohort plus public *Staphylococcus aureus* and *Streptococcus pneumoniae* genomes from ENA/SRA BioProjects PRJEB27932, PRJEB17615 and PRJNA995903) is included in this repository:
+
+- Main manuscript: [`manuscript/manuscript.md`](manuscript/manuscript.md) · [`manuscript/manuscript.docx`](manuscript/manuscript.docx)
+- Supplementary data: [`manuscript/supplementary.md`](manuscript/supplementary.md) · [`manuscript/supplementary.docx`](manuscript/supplementary.docx)
+- Figures: [`manuscript/figures/figure1_workflow.png`](manuscript/figures/figure1_workflow.png) (pipeline), [`manuscript/figures/figure2_results.png`](manuscript/figures/figure2_results.png) (validation)
+- Independent peer-review report: [`manuscript/peer_review_report.md`](manuscript/peer_review_report.md)
+
+### Key validation numbers (from the manuscript)
+
+| Caller | Sensitivity (95% CI) | Specificity (95% CI) | PPV (95% CI) |
+|---|---|---|---|
+| AMRFinderPlus on assembly contigs | 64.3% (38.8–83.7) | 100% (99.3–100) | 100% (70.1–100) |
+| **linezolid-amr (default AF≥0.15)** | **100% (78.5–100)** | **98.9% (97.7–99.5)** | **70.0% (48.1–85.5)** |
+| linezolid-amr (strict AF≥0.50) | 78.6% (52.4–92.4) | 100% (99.3–100) | 100% (74.1–100) |
+
+Three resistant *Enterococcus* isolates carried sub-consensus G2576T at alt-allele frequencies 0.18–0.42 — recovered by linezolid-amr but invisible to assembly-only callers.
+
 ## Citation
 
-If you use this software, please cite both the package and the foundational references it relies on. Software citation metadata is in [`CITATION.cff`](CITATION.cff) and is rendered as a GitHub citation card on the repository page.
+If you use this software, please cite both the package and the JAC-AMR Brief Report when available; software citation metadata is in [`CITATION.cff`](CITATION.cff) and is rendered as a GitHub citation card on the repository page.
 
-Key references the pipeline depends on:
+```bibtex
+@article{linezolid_amr_jacamr_2026,
+  title   = {linezolid-amr: an open-source pipeline that recovers 23S rRNA linezolid heteroresistance missed by assembly-only callers},
+  author  = {{linezolid-amr contributors}},
+  journal = {JAC-Antimicrobial Resistance},
+  year    = {2026},
+  note    = {Brief report submitted; preprint available at https://github.com/iowa69/linezolid-amr/blob/master/manuscript/manuscript.md}
+}
+```
 
-- **Kloss et al. 1999** — original mutational mapping of the linezolid binding site. PMID [10556031](https://pubmed.ncbi.nlm.nih.gov/10556031/).
+Key references the pipeline depends on or complements (see the manuscript for the full numbered reference list):
+
+- **Kloss et al. 1999** — mutational mapping of the linezolid binding site. PMID [10556031](https://pubmed.ncbi.nlm.nih.gov/10556031/).
 - **Tsiodras et al. 2001** — first clinical G2576T linezolid-resistance description. PMID [11476839](https://pubmed.ncbi.nlm.nih.gov/11476839/).
 - **Long & Vester 2012** — comprehensive linezolid resistance review. PMID [22143525](https://pubmed.ncbi.nlm.nih.gov/22143525/).
 - **Long et al. 2006** — Cfr 23S methyltransferase mechanism. PMID [16801432](https://pubmed.ncbi.nlm.nih.gov/16801432/).
 - **Wang et al. 2015** — discovery of *optrA*. PMID [25977397](https://pubmed.ncbi.nlm.nih.gov/25977397/).
 - **Antonelli et al. 2018** — discovery of *poxtA*. PMID [29635422](https://pubmed.ncbi.nlm.nih.gov/29635422/).
-- **Jolley et al. 2018** — PubMLST, the source of all MLST schemes used here.
-- **Feldgarden et al. 2021** — NCBI AMRFinderPlus, the engine for acquired-AMR profiling.
+- **Hasman et al. 2019** — LRE-Finder, the prior enterococcal-only short-read tool that linezolid-amr extends to *S. aureus* and *S. pneumoniae*. PMID [30863844](https://pubmed.ncbi.nlm.nih.gov/30863844/).
+- **Jolley et al. 2018** — PubMLST, the source of all MLST schemes used here. PMID [30345391](https://pubmed.ncbi.nlm.nih.gov/30345391/).
+- **Feldgarden et al. 2021** — NCBI AMRFinderPlus, the engine for acquired-AMR profiling. PMID [34135355](https://pubmed.ncbi.nlm.nih.gov/34135355/).
+- **Andersson, Nicoloff & Hjort 2019** — bacterial heteroresistance review. PMID [31235888](https://pubmed.ncbi.nlm.nih.gov/31235888/).
 
 ## Licence
 

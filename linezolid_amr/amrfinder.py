@@ -144,9 +144,25 @@ def run_amrfinder(
         proc = subprocess.run(cmd, stdout=logfh, stderr=subprocess.STDOUT)
     if proc.returncode != 0:
         raise RuntimeError(
-            f"amrfinder failed (exit {proc.returncode}). See {log}"
+            f"amrfinder failed (exit {proc.returncode}).\n{_log_tail(log)}\nFull log: {log}"
         )
     return tsv
+
+
+def _log_tail(log: Path, n: int = 12) -> str:
+    """Quote the end of a tool log in the exception.
+
+    A bare 'see the log file' is useless in folder mode, where the failure
+    scrolls past for one sample among hundreds and the common causes
+    (database/software version skew, missing organism) are one line long.
+    """
+    try:
+        lines = [l.rstrip() for l in log.read_text().splitlines() if l.strip()]
+    except OSError:
+        return "(log unavailable)"
+    if not lines:
+        return "(log empty)"
+    return "  " + "\n  ".join(lines[-n:])
 
 
 # AMRFinderPlus TSV header is stable across recent versions; we tolerate column
