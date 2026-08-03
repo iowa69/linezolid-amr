@@ -256,7 +256,7 @@ therefore annotated with the evidence needed to separate the two, written to
 | Forward/reverse counts + Fisher exact strand-bias *p* | A real mutation is carried by the template and appears on both strands. An allele seen on one strand only is the classic artifact signature, and is rejected. |
 | Wilson 95% CI on the allele fraction | 3/20 reads and 150/1000 reads are both "15%", but only one supports a clinical claim. |
 | Estimated mutated rrn operons (k/n) | rRNA is multi-copy, so genuine fractions cluster near k/n (e.g. 1/5 = 0.20 in *S. aureus*). |
-| Mean depth and base-count depth | The denominator the fraction was computed against. |
+| Mean depth and base-count depth | The denominator the fraction was computed against. Not capped at pysam's 8000 default, which rRNA loci routinely exceed. |
 | Evidence tier | Whether the position is a documented determinant or a lab-only substitution. |
 
 The strand-bias filter is skipped where a position lacks coverage on both
@@ -269,7 +269,28 @@ restores the pre-0.2 behaviour.
 - **MLST concordance with PubMLST.** Allele-by-allele comparison against the reference implementation on a 67-sample real-world cohort: **ST exact match 67/67 (100 %)**, per-locus alleles 63/67 (94 %); the four diverging cases are all *novel* profiles where both tools call ST = `-` and differ only in the integer chosen for a partial allele. `scripts/validate_mlst_vs_seemann.py` automates this comparison for any folder of assemblies, supporting ongoing regression testing as PubMLST schemes evolve.
 - **Coordinate integrity, verified from first principles.** The bundled *E. coli* master is anchored against ten independent 23S landmarks (A2058/A2059 macrolide, A2451/C2452 catalytic, U2506, U2585, A2602, C2611, G2661, A1067). For all four species, every BED target's reference base is checked against that species' own 23S FASTA, and every position map is checked base-by-base against both sequences it links — 2904 rows per organism, 0 errors. These run as tests, so a coordinate regression cannot ship silently.
 - **Allele-fraction recovery, measured not asserted.** A deterministic read simulator generates 23S reads carrying G2576T at known fractions from 0 % to 100 %; the real mapping + pileup path must recover each within tolerance. The same harness verifies that a strand-biased artifact is rejected, that genuine 18–42 % heteroresistance still passes, and that low-quality base noise cannot manufacture a call.
-- **Continuous tests.** 140 tests (`pytest tests/`) covering the above plus scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery. Tests needing minimap2/samtools skip automatically when those are absent.
+- **Limit of detection is reported, not assumed.** Every report states the median and minimum 23S depth and the lowest allele fraction that could have been called given that depth, and warns when any position fell below the depth floor. A shallow negative is never presented as a confident one.
+- **Threshold sweeps are reproducible.** `scripts/simulation_sweep.py` measures detection across allele fractions, depths and all four organisms, so any change to a threshold can be re-evaluated rather than argued about. Current defaults, 3 replicates × 4 organisms × depths {30, 100, 300}:
+
+  | True AF | Called | Notes |
+  |---:|:---:|---|
+  | 0.00 | 0/36 | no false positives on wild-type input |
+  | 0.02 | 0/36 | correctly treated as sequencing noise |
+  | 0.05 | 0/36 | reported with its fraction, not called |
+  | 0.10 | 3/36 | below the 0.15 threshold |
+  | 0.15 | 15/36 | exactly at the threshold, so sampling scatter decides |
+  | 0.20 | 32/36 | ≈ 1 operon in 5 |
+  | 0.25 | 35/36 | |
+  | 0.33 | 36/36 | |
+  | 0.50 | 36/36 | |
+  | 0.75 | 36/36 | |
+  | 1.00 | 35/36 | the one miss is the depth gate refusing to call at 16× |
+
+  Specificity is 36/36 with zero false positives; detection is complete from
+  AF 0.33 upward wherever depth is adequate. The single miss at AF 1.00 is the
+  `--min-depth` floor declining to call on 16 reads — the conservative
+  behaviour the limit-of-detection warning exists to make visible.
+- **Continuous tests.** 178 tests (`pytest tests/`) covering the above plus scheme bundling, MLST allele/ST mapping (including PubMLST null-allele STs such as *E. faecium* ST1478 with `pstS = 0`), summary CSV layout, AMRFinderPlus parsing, and folder-mode discovery. Tests needing minimap2/samtools skip automatically when those are absent.
 
 ## Worked example
 
