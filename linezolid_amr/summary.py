@@ -208,10 +208,15 @@ def write_wide_csv(rows: list[dict[str, str]], path: Path) -> None:
 
 
 def write_long_csv(rows: list[dict[str, str]], path: Path) -> None:
+    # Every key produced by build_long_rows must appear here: DictWriter is
+    # configured with extrasaction="ignore", so a missing name silently drops
+    # the column instead of raising.
     fieldnames = [
         "sample", "organism", "mlst_scheme", "ST",
         "feature_kind", "feature", "class", "subclass", "evidence",
-        "depth", "alt_count", "alt_af",
+        "depth", "alt_count", "alt_af", "af_ci_low", "af_ci_high",
+        "est_mutated_operons", "strand_bias_p",
+        "passes_threshold", "passes_filters", "filters",
         "coverage_pct", "identity_pct", "contig",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
