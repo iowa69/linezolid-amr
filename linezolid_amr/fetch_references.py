@@ -179,7 +179,7 @@ def fetch_organism_reference(
     # Build BED of canonical LZD positions in species coordinates
     positions = get_linezolid_positions()
     with bed_path.open("w") as fh:
-        fh.write("#chrom\tstart\tend\tname\tref_base\tresistance_bases\tdrug\n")
+        fh.write("#chrom\tstart\tend\tname\tref_base\tresistance_bases\tdrug\tevidence_tier\n")
         for p in positions:
             ti = p.ecoli_position - 1  # 0-based
             if ti < 0 or ti >= len(target):
@@ -188,10 +188,22 @@ def fetch_organism_reference(
             if qi < 0:
                 continue
             species_pos_1b = qi + 1
+            # The BED's ref_base must be the base in *this species'* reference,
+            # not the E. coli base from loci.json. The pileup compares observed
+            # bases against this column, so using the E. coli base would make
+            # the species' own base look like an alternate allele wherever the
+            # two genera differ.
+            species_ref_base = species_seq[qi]
+            if species_ref_base != p.ref_base:
+                print(
+                    f"note: {organism} carries {species_ref_base} where E. coli "
+                    f"{p.ecoli_position} is {p.ref_base}; BED uses the species base",
+                    file=sys.stderr,
+                )
             name = f"23S_E{p.ecoli_position}_{p.ref_base}_to_{'/'.join(p.resistance_bases)}"
             fh.write(
-                f"{label}\t{qi}\t{species_pos_1b}\t{name}\t{p.ref_base}\t"
-                f"{','.join(p.resistance_bases)}\t{p.drug}\n"
+                f"{label}\t{qi}\t{species_pos_1b}\t{name}\t{species_ref_base}\t"
+                f"{','.join(p.resistance_bases)}\t{p.drug}\t{p.evidence_tier}\n"
             )
 
     return {

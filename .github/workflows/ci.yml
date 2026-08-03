@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   test:
@@ -22,8 +22,40 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run tests (unit tests only — no network, no external binaries)
+      - name: Run tests (no network; integration tests self-skip without binaries)
         run: pytest -q tests/
+
+  integration:
+    # The accuracy tests are the ones that substantiate the tool's central
+    # claim, and they need a real aligner. Without this job they would skip
+    # silently in CI and only ever run on a developer's machine.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: lzd-test
+          python-version: "3.11"
+      - name: Install aligners
+        shell: bash -el {0}
+        run: conda install -y -c bioconda -c conda-forge minimap2 samtools bcftools
+      - name: Install package
+        shell: bash -el {0}
+        run: pip install -e ".[dev]"
+      - name: Run the full suite including integration tests
+        shell: bash -el {0}
+        run: pytest -q tests/
+      - name: Fail if integration tests silently skipped
+        shell: bash -el {0}
+        run: |
+          # A skip here means the aligners are missing and the accuracy claims
+          # went unverified — that must break the build, not pass quietly.
+          pytest -q -m integration tests/ 2>&1 | tee out.txt
+          if grep -qE '[0-9]+ skipped' out.txt; then
+            echo "::error::integration tests skipped — aligners not available"
+            exit 1
+          fi
 
   recipe-lint:
     runs-on: ubuntu-latest

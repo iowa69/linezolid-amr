@@ -25,11 +25,15 @@ def _amr_column(h: AmrHit) -> str:
 
 
 def _passing_resistance_alts(p: PileupCall) -> list[tuple[str, float]]:
-    """Only resistance-base alts that cleared the threshold get into the wide CSV."""
+    """Only resistance-base alts that cleared *every* filter reach the wide CSV.
+
+    Clearing the AF/depth thresholds is not enough: an allele rejected for
+    strand bias would otherwise be presented as a confident finding.
+    """
     return [
         (f"{p.ref_base}{p.ecoli_position}{a['base']}", a["af"])
         for a in p.alt_alleles
-        if a["resistance"] and a.get("passes_threshold")
+        if a["resistance"] and a.get("passes_filters", a.get("passes_threshold"))
     ]
 
 
@@ -137,7 +141,13 @@ def build_long_rows(
                 "depth": str(p.depth),
                 "alt_count": str(a["count"]),
                 "alt_af": f"{a['af']:.4f}",
+                "af_ci_low": f"{a.get('af_ci_low', 0.0):.4f}",
+                "af_ci_high": f"{a.get('af_ci_high', 0.0):.4f}",
+                "est_mutated_operons": str(a.get("est_mutated_operons", "")),
+                "strand_bias_p": f"{a['strand_bias_p']:.3g}" if "strand_bias_p" in a else "",
                 "passes_threshold": "YES" if a.get("passes_threshold") else "NO",
+                "passes_filters": "YES" if a.get("passes_filters", a.get("passes_threshold")) else "NO",
+                "filters": ";".join(a.get("filters", [])) or "PASS",
                 "coverage_pct": "",
                 "identity_pct": "",
                 "contig": p.ref_contig,
@@ -198,10 +208,15 @@ def write_wide_csv(rows: list[dict[str, str]], path: Path) -> None:
 
 
 def write_long_csv(rows: list[dict[str, str]], path: Path) -> None:
+    # Every key produced by build_long_rows must appear here: DictWriter is
+    # configured with extrasaction="ignore", so a missing name silently drops
+    # the column instead of raising.
     fieldnames = [
         "sample", "organism", "mlst_scheme", "ST",
         "feature_kind", "feature", "class", "subclass", "evidence",
-        "depth", "alt_count", "alt_af",
+        "depth", "alt_count", "alt_af", "af_ci_low", "af_ci_high",
+        "est_mutated_operons", "strand_bias_p",
+        "passes_threshold", "passes_filters", "filters",
         "coverage_pct", "identity_pct", "contig",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)

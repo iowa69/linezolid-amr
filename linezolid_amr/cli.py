@@ -232,10 +232,11 @@ def _resolve_organism(
 
 
 def _run_single(
-    sample: str, assembly: Path | None, r1: Path, r2: Path | None,
+    sample: str, assembly: Path | None, r1: Path | None, r2: Path | None,
     user_organism: str | None, outdir: Path, threads: int,
     min_af: float, min_depth: int, plus: bool,
     skip_amrfinder: bool, skip_rrna23s: bool,
+    filters: rrna_mod.PileupFilters | None = None,
 ) -> dict:
     """Per-sample pipeline.
 
@@ -245,6 +246,8 @@ def _run_single(
     """
     outdir.mkdir(parents=True, exist_ok=True)
     click.echo(f"\n=== {sample} ===")
+    if filters is None:
+        filters = rrna_mod.PileupFilters(min_af=min_af, min_depth=min_depth)
 
     mlst_scheme = mlst_alleles = None
     st = None
@@ -256,6 +259,13 @@ def _run_single(
             click.echo(f"   alleles: {mlst_alleles}")
     else:
         # 23S-only mode: no assembly → no MLST, AMRFinderPlus skipped, --organism required.
+        # Check for "no work at all" before the organism requirement, so the
+        # user is told the real problem rather than how to configure a stage
+        # they have just disabled.
+        if skip_rrna23s:
+            raise click.ClickException(
+                "Nothing to do: --skip-rrna23s with no assembly leaves no analysis to run."
+            )
         if not user_organism:
             raise click.ClickException(
                 f"Reads-only mode requires --organism (no assembly supplied). "
@@ -267,9 +277,15 @@ def _run_single(
 
     parameters = {
         "sample": sample, "assembly": str(assembly) if assembly else None,
-        "r1": str(r1), "r2": str(r2) if r2 else None,
+        "r1": str(r1) if r1 else None, "r2": str(r2) if r2 else None,
         "organism": organism, "mlst_scheme": mlst_scheme, "st": st,
-        "threads": threads, "min_af": min_af, "min_depth": min_depth, "plus": plus,
+        "threads": threads, "min_af": filters.min_af, "min_depth": filters.min_depth,
+        "min_baseq": filters.min_baseq, "min_mapq": filters.min_mapq,
+        "min_alt_reads": filters.min_alt_reads,
+        "strand_bias_p": filters.strand_bias_p,
+        "strand_filter": filters.apply_strand_filter,
+        "evidence_tier": filters.evidence_tier,
+        "plus": plus,
         "reads_only": assembly is None,
     }
 
@@ -282,19 +298,31 @@ def _run_single(
 
     pileup_calls = []
     vcf = None
-    if not skip_rrna23s:
+    if not skip_rrna23s and r1 is None:
+        click.echo("   no reads supplied — skipping 23S analysis", err=True)
+    elif not skip_rrna23s:
         if organism not in _SUPPORTED_ORGS:
             click.echo(f"   organism '{organism}' not supported for 23S analysis — skipping", err=True)
         else:
             click.echo(">> Running 23S rRNA analysis...")
             rrna_outdir = outdir / "rrna23s"
-            fasta = ref_mod.organism_fasta_path(organism)
             ref_mod.ensure_references_available(organism)
+            # Work from a staged copy: indexing writes a .fai beside the FASTA,
+            # and the bundled originals live in a possibly read-only install.
+            fasta = ref_mod.stage_reference(organism, rrna_outdir)
             bam = rrna_mod.map_reads(fasta, r1, r2, rrna_outdir, threads=threads, sample=sample)
-            pileup_calls = rrna_mod.pileup_at_positions(bam, fasta, organism, min_af=min_af, min_depth=min_depth)
+            pileup_calls = rrna_mod.pileup_at_positions(bam, fasta, organism, filters=filters)
             rrna_mod.write_pileup_tsv(pileup_calls, rrna_outdir / f"{sample}.23S_lzd_pileup.tsv")
+            rrna_mod.write_evidence_tsv(pileup_calls, rrna_outdir / f"{sample}.23S_lzd_evidence.tsv")
             vcf = rrna_mod.call_full_vcf(bam, fasta, rrna_outdir, sample=sample, threads=threads)
-            click.echo(f"   {len(pileup_calls)} positions; {sum(1 for c in pileup_calls if c.is_resistance)} with resistance allele")
+            n_pos = sum(1 for c in pileup_calls if c.is_resistance)
+            n_filtered = sum(1 for c in pileup_calls if c.filtered_resistance)
+            click.echo(f"   {len(pileup_calls)} positions; {n_pos} with resistance allele")
+            if n_filtered:
+                click.echo(
+                    f"   {n_filtered} position(s) had a resistance allele rejected by filters "
+                    f"(see {sample}.23S_lzd_evidence.tsv)"
+                )
 
     report = report_mod.build_report(
         sample=sample, organism=organism, amr_hits=amr_hits,
@@ -405,11 +433,41 @@ def _shared_run_options(f):
                      help="Minimum alt-allele frequency to call a 23S resistance allele.")(f)
     f = click.option("--min-depth", default=rrna_mod.DEFAULT_MIN_DEPTH, show_default=True, type=int,
                      help="Minimum read depth at a 23S position.")(f)
+    f = click.option("--min-baseq", default=rrna_mod.DEFAULT_MIN_BASEQ, show_default=True, type=int,
+                     help="Discard bases below this Phred quality before counting alleles.")(f)
+    f = click.option("--min-mapq", default=rrna_mod.DEFAULT_MIN_MAPQ, show_default=True, type=int,
+                     help="Discard reads below this mapping quality.")(f)
+    f = click.option("--min-alt-reads", default=rrna_mod.DEFAULT_MIN_ALT_READS, show_default=True, type=int,
+                     help="Minimum reads supporting an allele before it can be called.")(f)
+    f = click.option("--strand-bias-p", default=rrna_mod.DEFAULT_STRAND_BIAS_P, show_default=True, type=float,
+                     help="Fisher exact p below which an allele's strand distribution counts as biased.")(f)
+    f = click.option("--no-strand-filter", is_flag=True, default=False,
+                     help="Report strand-biased alleles as positive calls (pre-0.2 behaviour).")(f)
+    f = click.option("--evidence-tier", default=ref_mod.DEFAULT_EVIDENCE_TIER, show_default=True,
+                     type=click.Choice(ref_mod.EVIDENCE_TIERS),
+                     help="Weakest evidence tier allowed to drive a POSITIVE call. "
+                          "'established' = documented determinants only; 'associated' also allows "
+                          "positions seen clinically but of uncertain causality; 'experimental' also "
+                          "allows lab-selected/engineered positions. All tiers are always reported.")(f)
     f = click.option("--plus", is_flag=True, default=False,
                      help="Pass AMRFinderPlus --plus (stress/virulence/biocide search).")(f)
     f = click.option("--skip-amrfinder", is_flag=True, help="Skip AMRFinderPlus step.")(f)
     f = click.option("--skip-rrna23s", is_flag=True, help="Skip 23S analysis step.")(f)
     return f
+
+
+def _build_filters(min_af, min_depth, min_baseq, min_mapq, min_alt_reads,
+                   strand_bias_p, no_strand_filter, evidence_tier) -> rrna_mod.PileupFilters:
+    return rrna_mod.PileupFilters(
+        min_af=min_af,
+        min_depth=min_depth,
+        min_baseq=min_baseq,
+        min_mapq=min_mapq,
+        min_alt_reads=min_alt_reads,
+        strand_bias_p=strand_bias_p,
+        apply_strand_filter=not no_strand_filter,
+        evidence_tier=evidence_tier,
+    )
 
 
 @main.command("run",
@@ -420,8 +478,8 @@ def _shared_run_options(f):
 @click.option("-a", "--assembly", required=False, default=None,
               type=click.Path(exists=True, path_type=Path),
               help="Genome assembly FASTA. Omit for reads-only 23S analysis (--organism required).")
-@click.option("-1", "--r1", required=True, type=click.Path(exists=True, path_type=Path),
-              help="Forward reads (FASTQ, optionally gzip).")
+@click.option("-1", "--r1", required=False, default=None, type=click.Path(exists=True, path_type=Path),
+              help="Forward reads (FASTQ, optionally gzip). Omit only with --skip-rrna23s.")
 @click.option("-2", "--r2", default=None, type=click.Path(exists=True, path_type=Path),
               help="Reverse reads (optional).")
 @click.option("-o", "--outdir", required=True, type=click.Path(path_type=Path),
@@ -429,9 +487,20 @@ def _shared_run_options(f):
 @click.option("-s", "--sample", default=None,
               help="Sample name (default: assembly basename or R1 basename).")
 @_shared_run_options
-def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_depth, plus,
-            skip_amrfinder, skip_rrna23s):
+def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_depth,
+            min_baseq, min_mapq, min_alt_reads, strand_bias_p, no_strand_filter,
+            evidence_tier, plus, skip_amrfinder, skip_rrna23s):
     _print_banner()
+    if assembly is None and r1 is None:
+        raise click.ClickException(
+            "Supply -a/--assembly, -1/--r1, or both. With neither there is nothing to analyse."
+        )
+    if r1 is None and not skip_rrna23s:
+        # Assembly-only run: MLST + AMRFinderPlus, no read-level 23S analysis.
+        skip_rrna23s = True
+        click.echo("No reads supplied — running assembly-only (MLST + AMRFinderPlus).", err=True)
+    if r2 is not None and r1 is None:
+        raise click.ClickException("-2/--r2 given without -1/--r1.")
     if sample is None:
         if assembly is not None:
             sample = assembly.stem
@@ -447,9 +516,11 @@ def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_dep
                     base = base[: -len(suf)]
                     break
             sample = base
+    filters = _build_filters(min_af, min_depth, min_baseq, min_mapq, min_alt_reads,
+                             strand_bias_p, no_strand_filter, evidence_tier)
     res = _run_single(
         sample, assembly, r1, r2, organism, outdir, threads, min_af, min_depth, plus,
-        skip_amrfinder, skip_rrna23s,
+        skip_amrfinder, skip_rrna23s, filters=filters,
     )
     click.echo("")
     click.echo(f"Report:        {res['json']}")
@@ -472,9 +543,12 @@ def run_cmd(assembly, r1, r2, outdir, sample, organism, threads, min_af, min_dep
 @click.option("--reads-only", is_flag=True, default=False,
               help="Skip assembly discovery; process every R1/R2 pair in 23S-only mode (requires --organism).")
 @_shared_run_options
-def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
-               skip_amrfinder, skip_rrna23s, reads_only):
+def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth,
+               min_baseq, min_mapq, min_alt_reads, strand_bias_p, no_strand_filter,
+               evidence_tier, plus, skip_amrfinder, skip_rrna23s, reads_only):
     _print_banner()
+    filters = _build_filters(min_af, min_depth, min_baseq, min_mapq, min_alt_reads,
+                             strand_bias_p, no_strand_filter, evidence_tier)
     samples = discover_samples(input_dir, reads_only=reads_only)
     if not samples:
         raise click.ClickException(
@@ -501,27 +575,41 @@ def folder_cmd(input_dir, outdir, organism, threads, min_af, min_depth, plus,
     outdir.mkdir(parents=True, exist_ok=True)
     all_wide_rows: list[dict] = []
     all_long_rows: list[dict] = []
+    failures: list[tuple[str, str]] = []
     for s in valid:
         sample_dir = outdir / s["sample"]
         try:
             res = _run_single(
                 s["sample"], s["assembly"], s["r1"], s["r2"],
                 organism, sample_dir, threads, min_af, min_depth, plus,
-                skip_amrfinder, skip_rrna23s,
+                skip_amrfinder, skip_rrna23s, filters=filters,
             )
             all_wide_rows.append(res["wide_row"])
             all_long_rows.extend(res["long_rows"])
         except Exception as e:  # noqa: BLE001
             click.echo(f"   ✗ {s['sample']} failed: {e}", err=True)
+            failures.append((s["sample"], str(e)))
 
     summary_mod.write_wide_csv(all_wide_rows, outdir / "ALL_samples.summary_wide.csv")
     summary_mod.write_long_csv(all_long_rows, outdir / "ALL_samples.summary_long.csv")
+
+    # A per-sample failure manifest: a cohort run that silently drops samples
+    # from the summary is worse than one that fails loudly.
+    failed_path = outdir / "ALL_samples.failed.tsv"
+    if failures:
+        with failed_path.open("w") as fh:
+            fh.write("sample\terror\n")
+            for name, err in failures:
+                fh.write(f"{name}\t{err}\n")
 
     click.echo("")
     click.echo(f"Cohort summary (wide): {outdir}/ALL_samples.summary_wide.csv")
     click.echo(f"Cohort summary (long): {outdir}/ALL_samples.summary_long.csv")
     n_pos = sum(1 for r in all_wide_rows if r.get("linezolid_call") == "POS")
     click.echo(f"Linezolid-positive samples: {n_pos} / {len(all_wide_rows)}")
+    if failures:
+        click.echo(f"Failed samples: {len(failures)} (see {failed_path})", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

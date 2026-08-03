@@ -96,3 +96,51 @@ def test_csv_writers_roundtrip(tmp_path: Path):
     text_long = (tmp_path / "long.csv").read_text()
     assert "feature_kind" in text_long.splitlines()[0]
     assert "G2576T" in text_long
+
+
+def test_long_csv_writes_every_field_it_builds(tmp_path: Path):
+    """Guard against silently dropped columns.
+
+    write_long_csv uses extrasaction="ignore", so any key build_long_rows
+    produces but fieldnames omits vanishes without an error. passes_threshold
+    was lost this way, and the evidence columns would have followed.
+    """
+    import csv as _csv
+
+    pile = [_p(2576, "G", "T", 0.35, 200, passes=True)]
+    pile[0].alt_alleles[0].update({
+        "af_ci_low": 0.28, "af_ci_high": 0.42, "est_mutated_operons": 2,
+        "strand_bias_p": 0.8, "passes_filters": True, "filters": [],
+    })
+    rows = summary_mod.build_long_rows(
+        "S1", "Enterococcus_faecium", "17", "efaecium", [_h("cfr(D)", "OXAZOLIDINONE")], pile
+    )
+    out = tmp_path / "long.csv"
+    summary_mod.write_long_csv(rows, out)
+
+    with out.open() as fh:
+        written = list(_csv.DictReader(fh))
+    header = set(written[0].keys())
+    produced = {k for r in rows for k in r}
+    missing = produced - header
+    assert not missing, f"build_long_rows emits fields the CSV never writes: {sorted(missing)}"
+
+    mutation = next(r for r in written if r["feature"] == "G2576T")
+    assert mutation["passes_threshold"] == "YES"
+    assert mutation["passes_filters"] == "YES"
+    assert mutation["filters"] == "PASS"
+    assert float(mutation["af_ci_low"]) < 0.35 < float(mutation["af_ci_high"])
+    assert mutation["est_mutated_operons"] == "2"
+
+
+def test_wide_csv_excludes_filtered_alleles():
+    """An allele rejected by a quality filter must not appear as a confident hit."""
+    pile = [_p(2576, "G", "T", 0.30, 200, passes=True)]
+    pile[0].alt_alleles[0]["passes_filters"] = False
+    pile[0].alt_alleles[0]["filters"] = ["strand_bias"]
+    pile[0].is_resistance = False
+    row = summary_mod.build_wide_row(
+        "S9", "Enterococcus_faecium", "17", "efaecium", "", [], pile, False
+    )
+    assert "G2576T" not in row, "strand-biased allele leaked into the wide CSV"
+    assert row["linezolid_call"] == "neg"
