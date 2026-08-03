@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Regenerate the bundled per-species LZD target BEDs from loci.json.
 
+Writes to the package data directory explicitly. The ordinary path lookups
+prefer a user override directory when one exists, so using them here would
+quietly regenerate the developer's local copy and ship the stale originals.
+
 Runs entirely offline: the species coordinate for each E. coli position is read
 from the bundled position maps (which `fetch-references` produced by global
 alignment), and the reference base is read from the species' own 23S FASTA.
@@ -40,7 +44,7 @@ def load_map(path: Path) -> dict[int, int]:
 
 def main() -> int:
     positions = ref_mod.get_linezolid_positions()
-    ecoli_seq = read_fasta(ref_mod.ecoli_fasta_path())[1]
+    ecoli_seq = read_fasta(ref_mod.bundled_ecoli_fasta_path())[1]
 
     # Guard: the curated E. coli bases must match the E. coli reference, or the
     # whole coordinate framework is untrustworthy.
@@ -56,9 +60,9 @@ def main() -> int:
         return 1
 
     for organism in ref_mod.list_organisms():
-        contig, species_seq = read_fasta(ref_mod.organism_fasta_path(organism))
-        emap = load_map(ref_mod.organism_position_map_path(organism))
-        bed_path = ref_mod.organism_bed_path(organism)
+        contig, species_seq = read_fasta(ref_mod.bundled_organism_fasta_path(organism))
+        emap = load_map(ref_mod.bundled_organism_position_map_path(organism))
+        bed_path = ref_mod.bundled_organism_bed_path(organism)
 
         rows, skipped = [], []
         for p in sorted(positions, key=lambda x: x.ecoli_position):

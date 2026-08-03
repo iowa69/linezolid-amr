@@ -298,3 +298,84 @@ def test_bundled_reference_is_not_modified_by_a_run(tmp_path, reference):
     assert Path(str(staged) + ".fai").exists(), "staged copy should carry the index"
     if not existed_before:
         assert not fai.exists(), f"run created an index inside the package: {fai}"
+
+
+@requires_tools
+@pytest.mark.parametrize("severity", [0.45, 0.80, 0.95, 1.0])
+def test_artifact_rejected_at_every_severity(tmp_path, reference, severity):
+    """The strand filter must not fail open as the artifact approaches totality.
+
+    At severity 1.0 no reference read survives on the artifact's strand. A
+    guard computed from the reference allele alone then concluded the library
+    was single-stranded and skipped the test entirely, so a 48% "heteroresistant
+    G2576T in 3 of 6 operons" was reported to the clinician.
+    """
+    fasta, _name, seq = reference
+    r1 = tmp_path / f"sev_R1.fastq.gz"
+    r2 = tmp_path / f"sev_R2.fastq.gz"
+    simulate_strand_biased_reads(
+        seq, r1, r2, position=G2576_SPECIES_POS, alt_base="T",
+        fraction=severity, depth=300, seed=int(severity * 100),
+    )
+    bam = rrna.map_reads(fasta, r1, r2, tmp_path, threads=2, sample="sev")
+    call = _call_at(rrna.pileup_at_positions(bam, fasta, ORGANISM), 2576)
+    alt = next((a for a in call.alt_alleles if a["base"] == "T"), None)
+    assert alt is not None, "precondition: the artifact allele should be observed"
+    assert alt["rev"] == 0, "precondition: simulator should put every alt read on one strand"
+    assert not call.is_resistance, (
+        f"one-strand artifact at severity {severity} was called as resistance "
+        f"(af={alt['af']:.3f}, fwd={alt['fwd']}, rev={alt['rev']}, "
+        f"ref_fwd={call.ref_fwd}, ref_rev={call.ref_rev}, filters={alt['filters']})"
+    )
+
+
+@requires_tools
+def test_bed_without_evidence_tier_is_refused(tmp_path, reference):
+    """A pre-0.2 BED must raise, not be silently assumed 'established'.
+
+    Assuming the strongest tier would let archaeal and engineered
+    substitutions drive clinical positives and make --evidence-tier a no-op;
+    assuming the weakest would suppress every call. Both are wrong answers to
+    a question the file cannot answer.
+    """
+    from linezolid_amr import references as rm
+
+    legacy = tmp_path / "refs"
+    legacy.mkdir()
+    for src in (rm.organism_fasta_path(ORGANISM), rm.organism_position_map_path(ORGANISM)):
+        (legacy / src.name).write_bytes(src.read_bytes())
+    # Strip the tier column, as v0.1.x wrote it.
+    bed_src = rm.organism_bed_path(ORGANISM)
+    stripped = []
+    for line in bed_src.read_text().splitlines():
+        if line.startswith("#") or not line.strip():
+            stripped.append(line)
+        else:
+            stripped.append("\t".join(line.split("\t")[:7]))
+    (legacy / bed_src.name).write_text("\n".join(stripped) + "\n")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("LINEZOLID_AMR_REFDIR", str(legacy))
+        fasta, _n, seq = reference
+        r1 = tmp_path / "lg_R1.fastq.gz"
+        r2 = tmp_path / "lg_R2.fastq.gz"
+        simulate_reads(seq, r1, r2, variants={}, depth=60, seed=4)
+        bam = rrna.map_reads(fasta, r1, r2, tmp_path, threads=2, sample="lg")
+        with pytest.raises(ValueError, match="evidence-tier column"):
+            rrna.pileup_at_positions(bam, fasta, ORGANISM)
+
+
+@requires_tools
+def test_depth_is_not_truncated_at_high_coverage(tmp_path, reference):
+    """rRNA loci exceed pysam's 8000 default, which would under-report depth."""
+    fasta, _name, seq = reference
+    r1 = tmp_path / "deep_R1.fastq.gz"
+    r2 = tmp_path / "deep_R2.fastq.gz"
+    simulate_reads(seq, r1, r2, variants={G2576_SPECIES_POS: ("T", 0.30)},
+                   depth=20000, seed=8)
+    bam = rrna.map_reads(fasta, r1, r2, tmp_path, threads=4, sample="deep")
+    call = _call_at(rrna.pileup_at_positions(bam, fasta, ORGANISM), 2576)
+    assert call.depth > 15000, f"depth truncated to {call.depth}"
+    alt = next(a for a in call.alt_alleles if a["base"] == "T")
+    # With this much evidence the interval should be tight around the truth.
+    assert alt["af_ci_high"] - alt["af_ci_low"] < 0.03

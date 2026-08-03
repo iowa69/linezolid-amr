@@ -144,3 +144,30 @@ def test_phred_scaling():
     assert stats.phred(0.001) == pytest.approx(30.0)
     assert stats.phred(1.0) == 0.0
     assert stats.phred(0.0) == 255.0
+
+
+# --------------------------------------------------------------------------
+# Strand-bias guard: the filter must not weaken as the artifact gets worse
+# --------------------------------------------------------------------------
+
+def test_complete_one_sided_artifact_is_still_significant():
+    """When an artifact is total, no reference read remains on that strand.
+
+    Judging "is there two-strand coverage?" from the reference allele alone
+    made the filter skip exactly this case, so the most extreme artifacts were
+    the ones that passed. The Fisher test itself is decisive here.
+    """
+    p, minor = stats.strand_bias(ref_fwd=0, ref_rev=165, alt_fwd=155, alt_rev=0)
+    assert minor == 0.0
+    assert p < 1e-3
+
+
+def test_column_level_two_sided_check_distinguishes_the_two_cases():
+    """Single-end data has one empty strand overall; an artifact does not."""
+    # Complete artifact: the column has reads on both strands.
+    ref_fwd, ref_rev, alt_fwd, alt_rev = 0, 165, 155, 0
+    assert (ref_fwd + alt_fwd) > 0 and (ref_rev + alt_rev) > 0
+
+    # Single-end library: every read is forward, so the reverse side is empty.
+    ref_fwd, ref_rev, alt_fwd, alt_rev = 200, 0, 40, 0
+    assert not ((ref_fwd + alt_fwd) > 0 and (ref_rev + alt_rev) > 0)

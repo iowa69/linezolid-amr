@@ -285,3 +285,51 @@ def test_staging_is_idempotent(tmp_path):
     second = ref_mod.stage_reference(organism, tmp_path)
     assert first == second
     assert second.exists()
+
+
+# --------------------------------------------------------------------------
+# The shipped BEDs must carry the curation, not just the developer's override
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("organism", ORGANISMS)
+def test_bundled_bed_matches_the_curated_position_set(organism):
+    """The files inside the package — not a local override — must be current.
+
+    A user override directory silently wins over bundled data, so a
+    re-curation can pass the whole suite on the developer's machine while the
+    shipped BEDs stay stale. conftest neutralises the override; this asserts
+    the package data itself is in step with loci.json.
+    """
+    bed = ref_mod.bundled_organism_bed_path(organism)
+    rows = [l for l in bed.read_text().splitlines() if l.strip() and not l.startswith("#")]
+    declared = {p.ecoli_position for p in ref_mod.get_linezolid_positions()}
+    in_bed = {int(l.split("\t")[3].split("_")[1][1:]) for l in rows}
+    assert in_bed == declared, (
+        f"{organism}: bundled BED is out of step with loci.json — "
+        f"missing {sorted(declared - in_bed)}, extra {sorted(in_bed - declared)}. "
+        f"Run scripts/rebuild_bundled_beds.py."
+    )
+
+
+@pytest.mark.parametrize("organism", ORGANISMS)
+def test_bundled_bed_resistance_bases_match_curation(organism):
+    bed = ref_mod.bundled_organism_bed_path(organism)
+    curated = {p.ecoli_position: set(p.resistance_bases) for p in ref_mod.get_linezolid_positions()}
+    for line in bed.read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        f = line.split("\t")
+        pos = int(f[3].split("_")[1][1:])
+        assert set(f[5].split(",")) == curated[pos], (
+            f"{organism} position {pos}: BED has {f[5]}, loci.json has "
+            f"{','.join(sorted(curated[pos]))}"
+        )
+
+
+@pytest.mark.parametrize("organism", ORGANISMS)
+def test_bundled_bed_has_eight_columns(organism):
+    bed = ref_mod.bundled_organism_bed_path(organism)
+    for line in bed.read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        assert len(line.split("\t")) == 8, f"{organism}: {line!r}"

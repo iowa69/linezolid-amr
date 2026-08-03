@@ -179,7 +179,7 @@ def fetch_organism_reference(
     # Build BED of canonical LZD positions in species coordinates
     positions = get_linezolid_positions()
     with bed_path.open("w") as fh:
-        fh.write("#chrom\tstart\tend\tname\tref_base\tresistance_bases\tdrug\n")
+        fh.write("#chrom\tstart\tend\tname\tref_base\tresistance_bases\tdrug\tevidence_tier\n")
         for p in positions:
             ti = p.ecoli_position - 1  # 0-based
             if ti < 0 or ti >= len(target):
@@ -203,7 +203,7 @@ def fetch_organism_reference(
             name = f"23S_E{p.ecoli_position}_{p.ref_base}_to_{'/'.join(p.resistance_bases)}"
             fh.write(
                 f"{label}\t{qi}\t{species_pos_1b}\t{name}\t{species_ref_base}\t"
-                f"{','.join(p.resistance_bases)}\t{p.drug}\n"
+                f"{','.join(p.resistance_bases)}\t{p.drug}\t{p.evidence_tier}\n"
             )
 
     return {

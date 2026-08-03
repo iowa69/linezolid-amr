@@ -61,6 +61,10 @@ DEFAULT_MIN_ALT_READS = 3
 DEFAULT_STRAND_BIAS_P = 1e-3
 DEFAULT_STRAND_BIAS_MINOR_FRAC = 0.05
 
+# Matches the -d passed to bcftools mpileup on the VCF path, so the two
+# outputs describe the same reads.
+DEFAULT_MAX_DEPTH = 100_000
+
 
 def _need(tool: str) -> None:
     if shutil.which(tool) is None:
@@ -116,6 +120,8 @@ class PileupFilters:
     strand_bias_p: float = DEFAULT_STRAND_BIAS_P
     strand_bias_minor_frac: float = DEFAULT_STRAND_BIAS_MINOR_FRAC
     apply_strand_filter: bool = True
+    # Ceiling on pileup depth. rRNA loci exceed pysam's 8000 default.
+    max_depth: int = DEFAULT_MAX_DEPTH
     # Weakest evidence tier still allowed to produce a positive call.
     evidence_tier: str = references_mod.DEFAULT_EVIDENCE_TIER
 
@@ -205,25 +211,41 @@ class BedTarget:
 def _parse_bed(bed: Path) -> list[BedTarget]:
     """Parse the LZD target BED.
 
-    The evidence-tier column was added in v0.2; BEDs written by older versions
-    are read as fully established so they keep their previous behaviour.
+    The evidence-tier column became mandatory in v0.2. A BED without it is
+    refused rather than assumed: guessing "established" would let archaeal and
+    engineered substitutions drive clinical positives and silently turn
+    ``--evidence-tier established`` into a no-op, while guessing the weakest
+    tier would suppress every call. Neither wrong answer is acceptable when the
+    fix — regenerating the file — is one command.
     """
     targets: list[BedTarget] = []
     with bed.open() as fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, 1):
             if line.startswith("#") or not line.strip():
                 continue
             parts = line.rstrip("\n").split("\t")
+            if len(parts) < 8:
+                raise ValueError(
+                    f"{bed}:{lineno} has {len(parts)} columns; the evidence-tier "
+                    f"column has been required since v0.2. This file was written by "
+                    f"an older version — regenerate it with 'linezolid-amr "
+                    f"fetch-references', or delete the override directory to fall "
+                    f"back on the references bundled in the package."
+                )
+            tier = parts[7].strip()
+            if tier not in references_mod.EVIDENCE_TIERS:
+                raise ValueError(
+                    f"{bed}:{lineno} declares unknown evidence tier {tier!r}; "
+                    f"expected one of {', '.join(references_mod.EVIDENCE_TIERS)}."
+                )
             targets.append(
                 BedTarget(
                     contig=parts[0],
                     species_position=int(parts[2]),  # 1-based end == 1-based position
                     ref_base=parts[4],
                     resistance_bases=tuple(parts[5].split(",")),
-                    drug=parts[6] if len(parts) > 6 else "linezolid",
-                    evidence_tier=(
-                        parts[7] if len(parts) > 7 else references_mod.TIER_ESTABLISHED
-                    ),
+                    drug=parts[6] or "linezolid",
+                    evidence_tier=tier,
                 )
             )
     return targets
@@ -234,6 +256,7 @@ def _collect_observations(
     contig: str,
     pos0: int,
     filters: PileupFilters,
+    fastafile: pysam.FastaFile | None = None,
 ) -> tuple[dict[str, int], dict[str, dict[str, int]], int]:
     """Tally the bases seen at a single reference position.
 
@@ -256,6 +279,16 @@ def _collect_observations(
         min_mapping_quality=filters.min_mapq,
         stepper="samtools",
         ignore_overlaps=True,
+        # rRNA is multi-copy and every operon's reads land here, so this locus
+        # reaches depths that pysam's 8000 default silently truncates — which
+        # would under-report depth, widen the confidence interval, and disagree
+        # with the companion VCF (bcftools runs at -d 100000).
+        max_depth=filters.max_depth,
+        # Supplying the reference enables BAQ, which down-weights bases in
+        # poorly-anchored alignments near indels. bcftools applies it on the VCF
+        # path by default; without it here the two shipped outputs could
+        # disagree about the same position.
+        fastafile=fastafile,
     ):
         for pread in col.pileups:
             aln = pread.alignment
@@ -305,7 +338,15 @@ def _evaluate_alt(
     # Strand bias is only meaningful where the position actually has coverage on
     # both strands; single-end libraries and one-sided tiling legitimately give
     # one-strand data for every allele, reference included.
-    two_sided_coverage = ref_fwd > 0 and ref_rev > 0
+    #
+    # Judge that on the whole column, not on the reference allele alone. A
+    # near-complete artifact leaves no reference read on the artifact's strand,
+    # so a reference-only test would see ref_fwd == 0, conclude the data is
+    # single-stranded and skip the filter — making it weaker precisely as the
+    # artifact grows more extreme. Summing both alleles keeps genuinely
+    # single-end data exempt (one strand is empty overall) while holding a
+    # two-stranded library to the test.
+    two_sided_coverage = (ref_fwd + alt_fwd) > 0 and (ref_rev + alt_rev) > 0
 
     reasons: list[str] = []
     if raw_depth < filters.min_depth:
@@ -392,7 +433,9 @@ def pileup_at_positions(
         species_pos_1b = target.species_position
         ref_base = target.ref_base
         pos0 = species_pos_1b - 1
-        counts, strand, raw_depth = _collect_observations(bamfh, contig_name, pos0, filters)
+        counts, strand, raw_depth = _collect_observations(
+            bamfh, contig_name, pos0, filters, fastafile=fa
+        )
 
         base_depth = sum(counts[b] for b in "ACGT")
         ecoli_pos = sp_to_ecoli.get(species_pos_1b, -1)

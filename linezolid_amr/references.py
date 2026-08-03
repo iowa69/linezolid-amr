@@ -236,6 +236,28 @@ def organism_position_map_path(organism: str) -> Path:
     return _resolve(f"{organism}_23S_position_map.tsv")
 
 
+# Bundled-only accessors. The normal lookups above let a user override
+# directory win, which is right at runtime but wrong for tooling that must
+# read or write the files actually shipped in the package — a developer with
+# a stale override would otherwise regenerate their own copy and leave the
+# release data untouched.
+
+def bundled_organism_fasta_path(organism: str) -> Path:
+    return _bundled_path(f"{organism}_23S.fasta")
+
+
+def bundled_organism_bed_path(organism: str) -> Path:
+    return _bundled_path(f"{organism}_23S_lzd_positions.bed")
+
+
+def bundled_organism_position_map_path(organism: str) -> Path:
+    return _bundled_path(f"{organism}_23S_position_map.tsv")
+
+
+def bundled_ecoli_fasta_path() -> Path:
+    return _bundled_path("ecoli_K12_23S_rrlB.fasta")
+
+
 def ecoli_fasta_path() -> Path:
     return _resolve("ecoli_K12_23S_rrlB.fasta")
 

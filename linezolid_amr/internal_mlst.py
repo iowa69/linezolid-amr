@@ -281,27 +281,45 @@ def _ensure_blast_db(allele_fasta_gz: Path, work: Path) -> Path:
         stem = Path(allele_fasta_gz.stem).stem
 
     db_prefix = target_dir / stem
-    fasta = target_dir / f"{stem}.fasta"
-    if db_prefix.with_suffix(".nhr").exists():
+    # NB: not Path.with_suffix — the stem carries a dot (``atpA.2930``), and
+    # with_suffix would replace ``.2930`` and probe a file that never exists,
+    # so every lookup missed and every run rebuilt the database it just built.
+    marker = Path(f"{db_prefix}.nhr")
+    if marker.exists():
         return db_prefix
 
+    fasta = target_dir / f"{stem}.fasta"
     if not fasta.exists():
         # Write via a temp name so a concurrent run never sees a partial FASTA.
-        tmp = fasta.with_suffix(f".fasta.tmp{os.getpid()}")
+        tmp = target_dir / f"{stem}.fasta.tmp{os.getpid()}"
         with gzip.open(allele_fasta_gz, "rb") as gin, tmp.open("wb") as fout:
             shutil.copyfileobj(gin, fout)
         os.replace(tmp, fasta)
 
+    # Build into a private per-process prefix, then publish atomically. Several
+    # samples may run concurrently against one shared cache; makeblastdb writes
+    # a dozen files under one prefix and is not atomic, so pointing two
+    # processes at the same output prefix leaves torn databases that make
+    # blastn fail — and infer_organism swallows that into "scheme didn't
+    # match", which would silently select the wrong organism and hence the
+    # wrong 23S reference.
+    staging = target_dir / f".build-{stem}-{os.getpid()}"
+    staging.mkdir(parents=True, exist_ok=True)
     try:
+        tmp_prefix = staging / stem
         subprocess.run(
-            ["makeblastdb", "-in", str(fasta), "-dbtype", "nucl", "-out", str(db_prefix)],
+            ["makeblastdb", "-in", str(fasta), "-dbtype", "nucl", "-out", str(tmp_prefix)],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
+        for built in staging.iterdir():
+            os.replace(built, target_dir / built.name)
     except (subprocess.CalledProcessError, OSError):
         if target_dir == work:
             raise
         # Cache unusable (permissions, full disk) — fall back to the scratch dir.
         return _ensure_blast_db_in(allele_fasta_gz, work)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return db_prefix
 
 
@@ -313,7 +331,7 @@ def _ensure_blast_db_in(allele_fasta_gz: Path, work: Path) -> Path:
     if not fasta.exists():
         with gzip.open(allele_fasta_gz, "rb") as gin, fasta.open("wb") as fout:
             shutil.copyfileobj(gin, fout)
-    if not db_prefix.with_suffix(".nhr").exists():
+    if not Path(f"{db_prefix}.nhr").exists():
         subprocess.run(
             ["makeblastdb", "-in", str(fasta), "-dbtype", "nucl", "-out", str(db_prefix)],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
