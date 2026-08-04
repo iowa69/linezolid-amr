@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>linezolid-amr — User Guide v0.1.2</title>
+<title>linezolid-amr — User Guide v0.2.0</title>
 <style>
 @page {
   size: A4;
   margin: 20mm 16mm 20mm 16mm;
   @bottom-center {
-    content: "linezolid-amr v0.1.2 · User Guide · page " counter(page) " / " counter(pages);
+    content: "linezolid-amr v0.2.0 · User Guide · page " counter(page) " / " counter(pages);
     font-family: "Helvetica", "Arial", sans-serif;
     font-size: 8.5pt;
     color: #666;
@@ -100,11 +100,11 @@ td.mono, th.mono { font-family: "Menlo", monospace; font-size: 8.5pt; }
   <h2>Integrated AMR profiling + 23S rRNA<br>linezolid-resistance frequency analysis</h2>
   <div class="accent"></div>
   <div class="meta" style="margin-top: 22mm;">
-    <strong>User Guide</strong> · v0.1.2 · 2026-05-15<br>
+    <strong>User Guide</strong> · v0.2.0 · 2026-08-04<br>
     <em>S. aureus · E. faecalis · E. faecium · S. pneumoniae</em>
   </div>
   <div class="footer">
-    MLST (Seemann) → AMRFinderPlus → species-aware 23S read pileup. One command,
+    In-house MLST (PubMLST) → AMRFinderPlus → species-aware 23S read pileup. One command,
     one combined report, two summary CSVs (wide Kleborate-style + long per-feature),
     organism auto-detection, folder batch mode.
   </div>
@@ -133,9 +133,9 @@ linezolid-amr fetch-references     # ~120 KB total</code></pre>
 
 <table>
   <tr><th>Step</th><th>Tool</th><th>Output</th></tr>
-  <tr><td>1. MLST &amp; organism</td><td><code>mlst</code> (Seemann)</td><td>Sequence Type + auto-detected organism</td></tr>
+  <tr><td>1. MLST &amp; organism</td><td>in-house blastn vs bundled PubMLST schemes</td><td>Sequence Type + auto-detected organism</td></tr>
   <tr><td>2. AMR profile</td><td>AMRFinderPlus</td><td>All AMR / virulence / stress genes &amp; mutations</td></tr>
-  <tr><td>3. 23S heteroresistance</td><td>minimap2 + pysam + bcftools</td><td>Allele frequency at 11 canonical LZD positions + full VCF</td></tr>
+  <tr><td>3. 23S heteroresistance</td><td>minimap2 + pysam + bcftools</td><td>Allele frequency at 18 curated LZD positions, per-allele evidence, full VCF</td></tr>
 </table>
 
 <div class="callout note"><strong>Why read-level for 23S?</strong>
@@ -143,6 +143,19 @@ linezolid-amr fetch-references     # ~120 KB total</code></pre>
 operon. A G2576T mutation present in only 1–3 copies produces a 15–60 %
 allele-fraction heteroresistant signal — invisible to assembly-only callers
 (consensus base stays G). Reading the raw reads is the only way to catch it.</div>
+
+<div class="callout note"><strong>Telling heteroresistance from artifact.</strong>
+Because the signal is a <em>minority</em> allele it shares the frequency range
+with sequencing and alignment noise. Each candidate allele is therefore written
+to <code>&lt;sample&gt;.23S_lzd_evidence.tsv</code> with the evidence needed to
+separate the two: forward/reverse read counts and a Fisher exact strand-bias
+p-value (a real mutation is carried by the template and appears on both
+strands; an allele seen on one strand only is rejected), a Wilson 95 %
+confidence interval on the fraction, and the number of rrn operons that
+fraction implies. Each position also carries an <strong>evidence tier</strong> —
+substitutions only ever selected in archaea or mycobacteria are reported with
+their fractions but cannot drive a clinical positive unless you pass
+<code>--evidence-tier experimental</code>.</div>
 
 <!-- ============================================================ -->
 <h1 class="section">3 · Usage</h1>
@@ -184,8 +197,15 @@ named with the same basename. Recognised read suffixes:</p>
   <tr><td class="mono">-O / --organism</td><td>auto (MLST)</td><td>Override MLST organism inference</td></tr>
   <tr><td class="mono">-t / --threads</td><td>all CPUs</td><td>Parallel threads</td></tr>
   <tr><td class="mono">--plus</td><td>off</td><td>AMRFinderPlus stress/virulence/biocide search</td></tr>
-  <tr><td class="mono">--min-af</td><td>0.01</td><td>Min 23S alt-allele frequency</td></tr>
+  <tr><td class="mono">--min-af</td><td>0.15</td><td>Min 23S alt-allele frequency for a positive call</td></tr>
   <tr><td class="mono">--min-depth</td><td>20</td><td>Min depth at a 23S position</td></tr>
+  <tr><td class="mono">--min-baseq</td><td>13</td><td>Discard bases below this Phred quality</td></tr>
+  <tr><td class="mono">--min-mapq</td><td>20</td><td>Discard reads below this mapping quality</td></tr>
+  <tr><td class="mono">--min-alt-reads</td><td>3</td><td>Min reads supporting an allele before it can be called</td></tr>
+  <tr><td class="mono">--strand-bias-p</td><td>1e-3</td><td>Fisher exact p below which strand distribution counts as biased</td></tr>
+  <tr><td class="mono">--no-strand-filter</td><td>off</td><td>Report strand-biased alleles as positive calls (pre-0.2 behaviour)</td></tr>
+  <tr><td class="mono">--evidence-tier</td><td>associated</td><td>Weakest evidence tier allowed to drive a POSITIVE call</td></tr>
+  <tr><td class="mono">--reads-only</td><td>off</td><td>(folder) process every R1/R2 pair without assemblies</td></tr>
   <tr><td class="mono">--skip-amrfinder / --skip-rrna23s</td><td>—</td><td>Skip one step</td></tr>
 </table>
 
@@ -231,7 +251,7 @@ cohort CSVs at the root of <code>outdir/</code>.</p>
 &gt;&gt; Running AMRFinderPlus...
    17 hits, 3 linezolid-relevant
 &gt;&gt; Running 23S rRNA analysis...
-   11 positions; 1 with resistance allele
+   18 positions; 1 with resistance allele
 
 Linezolid resistance call: POSITIVE</code></pre>
 
