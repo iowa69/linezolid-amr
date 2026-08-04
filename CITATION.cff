@@ -8,15 +8,22 @@ authors:
 url: "https://github.com/iowa69/linezolid-amr"
 repository-code: "https://github.com/iowa69/linezolid-amr"
 version: "0.2.0"
-date-released: "2026-05-15"
+date-released: "2026-08-04"
 license: MIT
 abstract: |
   linezolid-amr combines NCBI AMRFinderPlus (acquired AMR gene + point-mutation
-  detection on an assembly) and tseemann's MLST with species-aware read-level
-  pileup of the 23S rRNA locus, capturing heteroresistant linezolid mutations
-  (e.g. G2576T, G2505A) in Staphylococcus aureus, Enterococcus faecalis,
-  Enterococcus faecium, and Streptococcus pneumoniae. Mutations are reported in
-  E. coli K-12 23S numbering via a pairwise-alignment-derived position map.
+  detection on an assembly), an in-house BLAST-based MLST caller backed by
+  bundled PubMLST schemes, and species-aware read-level pileup of the 23S rRNA
+  locus, capturing heteroresistant linezolid mutations (e.g. G2576T, G2505A) in
+  Staphylococcus aureus, Enterococcus faecalis, Enterococcus faecium, and
+  Streptococcus pneumoniae. Because rRNA is encoded by several near-identical
+  operons, a resistance mutation carried by only some copies appears as an
+  intermediate allele fraction that assembly consensus discards. Candidate
+  alleles are annotated with strand distribution, a binomial confidence
+  interval and the implied number of mutated operons, so genuine minority
+  populations can be told apart from sequencing artifacts. Mutations are
+  reported in E. coli K-12 23S numbering via a pairwise-alignment-derived
+  position map.
 keywords:
   - linezolid
   - oxazolidinone
@@ -33,13 +40,13 @@ references:
         given-names: Michael
     url: "https://github.com/ncbi/amr"
     notes: "Acquired AMR gene + point-mutation detection."
-  - type: software
-    title: "mlst"
+  - type: database
+    title: "PubMLST"
     authors:
-      - family-names: Seemann
-        given-names: Torsten
-    url: "https://github.com/tseemann/mlst"
-    notes: "Multi-locus sequence typing and organism inference."
+      - family-names: Jolley
+        given-names: K. A.
+    url: "https://pubmlst.org"
+    notes: "Source of the bundled MLST schemes and ST profile tables."
   - type: article
     title: "Resistance mutations in 23 S rRNA identify the site of action of the protein synthesis inhibitor linezolid in the ribosomal peptidyl transferase center"
     authors:
@@ -50,7 +57,7 @@ references:
     identifiers:
       - type: pmid
         value: "10556031"
-    notes: "Foundational paper mapping the 23S resistance positions screened by this tool."
+    notes: "Archaeal selection experiments establishing several of the 23S positions screened by this tool (A2062C, C2452U, A2453G/C, C2499U, U2500C, U2504C)."
   - type: article
     title: "Linezolid resistance in a clinical isolate of Staphylococcus aureus"
     authors:
@@ -75,6 +82,19 @@ references:
       - type: pmid
         value: "22143525"
     notes: "Comprehensive review of all 23S linezolid resistance mechanisms."
+  - type: article
+    title: "Mutations in 23S rRNA at the peptidyl transferase center and their relationship to linezolid binding and cross-resistance"
+    authors:
+      - family-names: Long
+        given-names: K. S.
+      - family-names: Vester
+        given-names: B.
+    year: 2010
+    journal: "Antimicrobial Agents and Chemotherapy"
+    identifiers:
+      - type: pmid
+        value: "20696869"
+    notes: "Site-directed panel in single-operon M. smegmatis; primary source for the engineered positions in the curated set."
   - type: article
     title: "The Cfr rRNA methyltransferase confers resistance to Phenicols, Lincosamides, Oxazolidinones, Pleuromutilins, and Streptogramin A antibiotics"
     authors:

@@ -356,14 +356,13 @@ Stated plainly, because they bound how the output should be read:
 
 ## Manuscript
 
-A *JAC-Antimicrobial Resistance* Brief Report describing **linezolid-amr** and its validation across 578 Gram-positive isolates (a local clinical *Enterococcus* cohort plus public *Staphylococcus aureus* and *Streptococcus pneumoniae* genomes from ENA/SRA BioProjects PRJEB27932, PRJEB17615 and PRJNA995903) is included in this repository:
+A *JAC-Antimicrobial Resistance* Brief Report describing **linezolid-amr** and
+its validation across 578 Gram-positive isolates (a local clinical
+*Enterococcus* cohort plus public *Staphylococcus aureus* and *Streptococcus
+pneumoniae* genomes from ENA/SRA BioProjects PRJEB27932, PRJEB17615 and
+PRJNA995903) is in preparation. The draft is not yet in this repository.
 
-- Main manuscript: [`manuscript/manuscript.md`](manuscript/manuscript.md) · [`manuscript/manuscript.docx`](manuscript/manuscript.docx)
-- Supplementary data: [`manuscript/supplementary.md`](manuscript/supplementary.md) · [`manuscript/supplementary.docx`](manuscript/supplementary.docx)
-- Figures: [`manuscript/figures/figure1_workflow.png`](manuscript/figures/figure1_workflow.png) (pipeline), [`manuscript/figures/figure2_results.png`](manuscript/figures/figure2_results.png) (validation)
-- Independent peer-review report: [`manuscript/peer_review_report.md`](manuscript/peer_review_report.md)
-
-### Key validation numbers (from the manuscript)
+### Cohort validation (measured on v0.1.x)
 
 | Caller | Sensitivity (95% CI) | Specificity (95% CI) | PPV (95% CI) |
 |---|---|---|---|
@@ -371,7 +370,17 @@ A *JAC-Antimicrobial Resistance* Brief Report describing **linezolid-amr** and i
 | **linezolid-amr (default AF≥0.15)** | **100% (78.5–100)** | **98.9% (97.7–99.5)** | **70.0% (48.1–85.5)** |
 | linezolid-amr (strict AF≥0.50) | 78.6% (52.4–92.4) | 100% (99.3–100) | 100% (74.1–100) |
 
-Three resistant *Enterococcus* isolates carried sub-consensus G2576T at alt-allele frequencies 0.18–0.42 — recovered by linezolid-amr but invisible to assembly-only callers.
+Three resistant *Enterococcus* isolates carried sub-consensus G2576T at
+alt-allele frequencies 0.18–0.42 — recovered by linezolid-amr but invisible to
+assembly-only callers.
+
+> **These figures were measured on v0.1.x and have not been re-derived on
+> v0.2.0.** The strand-bias filter, the minimum-alt-read gate and the evidence
+> tiers introduced in v0.2.0 all act on the false-positive side, so the 70.0%
+> PPV in particular should be expected to change. The cohort must be re-run
+> before these numbers are quoted for v0.2.0 or submitted for publication.
+> Simulation-based performance for the current defaults is in
+> [Validation](#validation) above.
 
 ## Citation
 
