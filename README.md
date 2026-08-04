@@ -362,25 +362,19 @@ its validation across 578 Gram-positive isolates (a local clinical
 pneumoniae* genomes from ENA/SRA BioProjects PRJEB27932, PRJEB17615 and
 PRJNA995903) is in preparation. The draft is not yet in this repository.
 
-### Cohort validation (measured on v0.1.x)
+### Cohort validation
 
-| Caller | Sensitivity (95% CI) | Specificity (95% CI) | PPV (95% CI) |
-|---|---|---|---|
-| AMRFinderPlus on assembly contigs | 64.3% (38.8–83.7) | 100% (99.3–100) | 100% (70.1–100) |
-| **linezolid-amr (default AF≥0.15)** | **100% (78.5–100)** | **98.9% (97.7–99.5)** | **70.0% (48.1–85.5)** |
-| linezolid-amr (strict AF≥0.50) | 78.6% (52.4–92.4) | 100% (99.3–100) | 100% (74.1–100) |
+Cohort sensitivity/specificity/PPV figures quoted in earlier drafts of this
+README are **not reproduced here**, because the per-isolate data behind them is
+not in this repository and their provenance has not been re-established. They
+will be restored once the cohort has been re-run on v0.2.0 and the underlying
+per-sample outputs are archived alongside them.
 
-Three resistant *Enterococcus* isolates carried sub-consensus G2576T at
-alt-allele frequencies 0.18–0.42 — recovered by linezolid-amr but invisible to
-assembly-only callers.
-
-> **These figures were measured on v0.1.x and have not been re-derived on
-> v0.2.0.** The strand-bias filter, the minimum-alt-read gate and the evidence
-> tiers introduced in v0.2.0 all act on the false-positive side, so the 70.0%
-> PPV in particular should be expected to change. The cohort must be re-run
-> before these numbers are quoted for v0.2.0 or submitted for publication.
-> Simulation-based performance for the current defaults is in
-> [Validation](#validation) above.
+For performance that *is* reproducible from this repository today, see
+[Validation](#validation) above: the simulation sweep measures detection across
+allele fractions, depths and all four organisms with a single command, and the
+178-test suite re-derives the reference and coordinate invariants from first
+principles on every run.
 
 ## Citation
 
